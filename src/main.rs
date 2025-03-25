@@ -1,3 +1,4 @@
+use axum::body::Body;
 use axum::{
     extract::ConnectInfo,
     http::Request,
@@ -28,7 +29,7 @@ struct RequestInfo {
 }
 
 /// Extract all desired information from the request.
-fn get_request_info(addr: SocketAddr, req: &Request<hyper::Body>) -> RequestInfo {
+fn get_request_info(addr: SocketAddr, req: &Request<Body>) -> RequestInfo {
     let headers = req.headers();
     RequestInfo {
         ip_addr: addr.ip().to_string(),
@@ -87,7 +88,7 @@ async fn ip_handler(ConnectInfo(addr): ConnectInfo<SocketAddr>) -> impl IntoResp
 /// Returns the User-Agent header.
 async fn ua_handler(
     ConnectInfo(_addr): ConnectInfo<SocketAddr>,
-    req: Request<hyper::Body>,
+    req: Request<Body>,
 ) -> impl IntoResponse {
     let user_agent = req
         .headers()
@@ -100,7 +101,7 @@ async fn ua_handler(
 /// Returns the Accept-Language header.
 async fn lang_handler(
     ConnectInfo(_addr): ConnectInfo<SocketAddr>,
-    req: Request<hyper::Body>,
+    req: Request<Body>,
 ) -> impl IntoResponse {
     let lang = req
         .headers()
@@ -113,7 +114,7 @@ async fn lang_handler(
 /// Returns the Accept-Encoding header.
 async fn encoding_handler(
     ConnectInfo(_addr): ConnectInfo<SocketAddr>,
-    req: Request<hyper::Body>,
+    req: Request<Body>,
 ) -> impl IntoResponse {
     let encoding = req
         .headers()
@@ -126,7 +127,7 @@ async fn encoding_handler(
 /// Returns the Accept header (mime types).
 async fn mime_handler(
     ConnectInfo(_addr): ConnectInfo<SocketAddr>,
-    req: Request<hyper::Body>,
+    req: Request<Body>,
 ) -> impl IntoResponse {
     let mime = req
         .headers()
@@ -139,7 +140,7 @@ async fn mime_handler(
 /// Returns the Forwarded header.
 async fn forwarded_handler(
     ConnectInfo(_addr): ConnectInfo<SocketAddr>,
-    req: Request<hyper::Body>,
+    req: Request<Body>,
 ) -> impl IntoResponse {
     let forwarded = req
         .headers()
@@ -152,7 +153,7 @@ async fn forwarded_handler(
 /// Returns all information in plain text.
 async fn all_handler(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    req: Request<hyper::Body>,
+    req: Request<Body>,
 ) -> impl IntoResponse {
     let info = get_request_info(addr, &req);
     format!(
@@ -177,7 +178,7 @@ async fn all_handler(
 /// Returns all information as JSON.
 async fn all_json_handler(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    req: Request<hyper::Body>,
+    req: Request<Body>,
 ) -> impl IntoResponse {
     let info = get_request_info(addr, &req);
     Json(info)
