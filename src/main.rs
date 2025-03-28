@@ -1,10 +1,6 @@
 use axum::body::Body;
 use axum::{
-    extract::ConnectInfo,
-    http::Request,
-    response::{IntoResponse, Response},
-    routing::get,
-    Json, Router,
+    extract::ConnectInfo, http::Request, response::IntoResponse, routing::get, Json, Router,
 };
 use serde::Serialize;
 use std::net::{Ipv6Addr, SocketAddr};
