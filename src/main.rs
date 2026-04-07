@@ -1,0 +1,40 @@
+use std::net::SocketAddr;
+
+use tokio::net::TcpListener;
+use tracing_subscriber::EnvFilter;
+
+mod config;
+mod handlers;
+mod lookup;
+mod providers;
+mod routes;
+mod state;
+mod sync;
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let config = config::Config::from_env();
+
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new(&config.log_level)),
+        )
+        .init();
+
+    let state = state::AppState::new(config.clone());
+
+    let sync_state = state.clone();
+    tokio::spawn(async move {
+        sync::scheduler::start_sync_loop(sync_state).await;
+    });
+
+    let app = routes::create_router(state);
+
+    let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
+    tracing::info!("listening on {}", addr);
+    let listener = TcpListener::bind(addr).await?;
+    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await?;
+
+    Ok(())
+}
