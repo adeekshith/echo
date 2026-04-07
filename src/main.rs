@@ -8,6 +8,7 @@ mod config;
 mod handlers;
 mod lookup;
 mod providers;
+mod ratelimit;
 mod routes;
 mod state;
 mod sync;
