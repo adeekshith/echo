@@ -54,6 +54,8 @@ async fn run_sync(providers: &[Box<dyn IpRangeProvider>], state: &AppState) {
             Ok(records) => {
                 let count = records.len();
                 tracing::info!(provider = provider_name, count, "synced IP ranges");
+                metrics::counter!("sync_total", "provider" => provider_name.to_string(), "result" => "success").increment(1);
+                metrics::gauge!("sync_cidr_count", "provider" => provider_name.to_string()).set(count as f64);
                 statuses.push(SyncStatus {
                     provider: provider_name.to_string(),
                     last_synced_at: Some(now),
@@ -64,6 +66,7 @@ async fn run_sync(providers: &[Box<dyn IpRangeProvider>], state: &AppState) {
             }
             Err(e) => {
                 tracing::error!(provider = provider_name, error = %e, "failed to sync IP ranges");
+                metrics::counter!("sync_total", "provider" => provider_name.to_string(), "result" => "error").increment(1);
                 statuses.push(SyncStatus {
                     provider: provider_name.to_string(),
                     last_synced_at: None,

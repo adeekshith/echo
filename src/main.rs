@@ -1,5 +1,6 @@
 use std::net::SocketAddr;
 
+use metrics_exporter_prometheus::PrometheusBuilder;
 use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
 
@@ -22,7 +23,11 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
-    let state = state::AppState::new(config.clone());
+    let metrics_handle = PrometheusBuilder::new()
+        .install_recorder()
+        .expect("failed to install Prometheus recorder");
+
+    let state = state::AppState::new(config.clone(), metrics_handle);
 
     let sync_state = state.clone();
     tokio::spawn(async move {

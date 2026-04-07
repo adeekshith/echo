@@ -26,7 +26,9 @@ pub async fn echo_handler(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Result<Response<Body>, StatusCode> {
-    let client_ip = extract_client_ip(&addr, &headers, &state);
+    metrics::counter!("http_requests_total", "endpoint" => "/").increment(1);
+
+    let client_ip = extract_client_ip(&addr, &headers, &state.config);
 
     let user_agent = headers
         .get(header::USER_AGENT)
@@ -49,14 +51,23 @@ pub async fn echo_handler(
         let table = state.lookup_table.read().await;
         match client_ip.parse::<IpAddr>() {
             Ok(ip) => match table.lookup(ip) {
-                Some(entry) => (
-                    Some(entry.provider.clone()),
-                    entry.region.clone(),
-                    entry.service.clone(),
-                ),
-                None => (None, None, None),
+                Some(entry) => {
+                    metrics::counter!("ip_lookup_total", "result" => "hit").increment(1);
+                    (
+                        Some(entry.provider.clone()),
+                        entry.region.clone(),
+                        entry.service.clone(),
+                    )
+                }
+                None => {
+                    metrics::counter!("ip_lookup_total", "result" => "miss").increment(1);
+                    (None, None, None)
+                }
             },
-            Err(_) => (None, None, None),
+            Err(_) => {
+                metrics::counter!("ip_lookup_total", "result" => "miss").increment(1);
+                (None, None, None)
+            }
         }
     };
 
@@ -80,10 +91,10 @@ pub async fn echo_handler(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
-fn extract_client_ip(addr: &SocketAddr, headers: &HeaderMap, state: &AppState) -> String {
+fn extract_client_ip(addr: &SocketAddr, headers: &HeaderMap, config: &crate::config::Config) -> String {
     let peer_ip = addr.ip();
 
-    if state.config.is_trusted_proxy(&peer_ip) {
+    if config.is_trusted_proxy(&peer_ip) {
         // Try X-Forwarded-For first (leftmost = original client)
         if let Some(xff) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok()) {
             if let Some(first_ip) = xff.split(',').next() {
@@ -110,77 +121,70 @@ fn extract_client_ip(addr: &SocketAddr, headers: &HeaderMap, state: &AppState) -
 mod tests {
     use super::*;
     use crate::config::Config;
-    use crate::lookup::IpLookupTable;
-    use std::sync::Arc;
-    use tokio::sync::RwLock;
 
-    fn test_state() -> AppState {
-        AppState {
-            lookup_table: Arc::new(RwLock::new(IpLookupTable::empty())),
-            sync_status: Arc::new(RwLock::new(Vec::new())),
-            config: Arc::new(Config {
-                port: 8083,
-                sync_interval_secs: 43200,
-                log_level: "info".to_string(),
-                trusted_proxies: vec!["10.0.0.0/8".parse().unwrap()],
-                rate_limit_per_second: 10,
-                rate_limit_burst: 20,
-            }),
+    fn test_config() -> Config {
+        Config {
+            port: 8083,
+            sync_interval_secs: 43200,
+            log_level: "info".to_string(),
+            trusted_proxies: vec!["10.0.0.0/8".parse().unwrap()],
+            rate_limit_per_second: 10,
+            rate_limit_burst: 20,
         }
     }
 
     #[test]
     fn test_extract_ip_direct_connection() {
-        let state = test_state();
+        let config = test_config();
         let addr: SocketAddr = "203.0.113.1:12345".parse().unwrap();
         let headers = HeaderMap::new();
 
-        let ip = extract_client_ip(&addr, &headers, &state);
+        let ip = extract_client_ip(&addr, &headers, &config);
         assert_eq!(ip, "203.0.113.1");
     }
 
     #[test]
     fn test_extract_ip_xff_from_trusted_proxy() {
-        let state = test_state();
-        let addr: SocketAddr = "10.0.0.1:12345".parse().unwrap(); // trusted
+        let config = test_config();
+        let addr: SocketAddr = "10.0.0.1:12345".parse().unwrap();
         let mut headers = HeaderMap::new();
         headers.insert("x-forwarded-for", "203.0.113.50, 10.0.0.1".parse().unwrap());
 
-        let ip = extract_client_ip(&addr, &headers, &state);
+        let ip = extract_client_ip(&addr, &headers, &config);
         assert_eq!(ip, "203.0.113.50");
     }
 
     #[test]
     fn test_extract_ip_xff_from_untrusted_ignored() {
-        let state = test_state();
-        let addr: SocketAddr = "203.0.113.1:12345".parse().unwrap(); // NOT trusted
+        let config = test_config();
+        let addr: SocketAddr = "203.0.113.1:12345".parse().unwrap();
         let mut headers = HeaderMap::new();
         headers.insert("x-forwarded-for", "1.2.3.4".parse().unwrap());
 
-        let ip = extract_client_ip(&addr, &headers, &state);
-        assert_eq!(ip, "203.0.113.1"); // XFF ignored
+        let ip = extract_client_ip(&addr, &headers, &config);
+        assert_eq!(ip, "203.0.113.1");
     }
 
     #[test]
     fn test_extract_ip_x_real_ip_from_trusted() {
-        let state = test_state();
+        let config = test_config();
         let addr: SocketAddr = "10.0.0.1:12345".parse().unwrap();
         let mut headers = HeaderMap::new();
         headers.insert("x-real-ip", "203.0.113.99".parse().unwrap());
 
-        let ip = extract_client_ip(&addr, &headers, &state);
+        let ip = extract_client_ip(&addr, &headers, &config);
         assert_eq!(ip, "203.0.113.99");
     }
 
     #[test]
     fn test_xff_takes_priority_over_x_real_ip() {
-        let state = test_state();
+        let config = test_config();
         let addr: SocketAddr = "10.0.0.1:12345".parse().unwrap();
         let mut headers = HeaderMap::new();
         headers.insert("x-forwarded-for", "1.1.1.1".parse().unwrap());
         headers.insert("x-real-ip", "2.2.2.2".parse().unwrap());
 
-        let ip = extract_client_ip(&addr, &headers, &state);
+        let ip = extract_client_ip(&addr, &headers, &config);
         assert_eq!(ip, "1.1.1.1");
     }
 }
