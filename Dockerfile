@@ -10,11 +10,16 @@ RUN mkdir src && \
     echo 'fn main() {}' > src/main.rs && \
     echo '' > src/lib.rs && \
     cargo build --release 2>/dev/null; \
-    rm -rf src
+    rm -rf src && \
+    rm -rf target/release/.fingerprint/client_echo* \
+           target/release/.fingerprint/client-echo* \
+           target/release/deps/client_echo* \
+           target/release/deps/client-echo* \
+           target/release/client-echo* \
+           target/release/client_echo*
 
 # Copy real source and build
 COPY src ./src
-COPY tests ./tests
 RUN cargo build --release
 
 FROM alpine:3.21

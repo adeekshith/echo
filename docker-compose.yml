@@ -1,0 +1,19 @@
+services:
+  client-echo:
+    build: .
+    ports:
+      - "${PORT:-8083}:${PORT:-8083}"
+    environment:
+      PORT: "${PORT:-8083}"
+      SYNC_INTERVAL_SECS: "${SYNC_INTERVAL_SECS:-43200}"
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+      TRUSTED_PROXIES: "${TRUSTED_PROXIES:-127.0.0.1/32,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}"
+      RATE_LIMIT_PER_SECOND: "${RATE_LIMIT_PER_SECOND:-10}"
+      RATE_LIMIT_BURST: "${RATE_LIMIT_BURST:-20}"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:${PORT:-8083}/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
