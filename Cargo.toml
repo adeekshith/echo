@@ -1,10 +1,42 @@
 [package]
-name = "echo"
+name = "ipecho"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
-axum = "0.6.20"
-tokio = { version = "1.44.1", features = ["full"] }
-serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.140"
+axum = "0.8"
+tokio = { version = "1", features = ["full"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["trace", "set-header"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+ipnet = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1"
+thiserror = "2"
+futures = "0.3"
+metrics = "0.24"
+metrics-exporter-prometheus = "0.16"
+governor = "0.8"
+
+[dev-dependencies]
+wiremock = "0.6"
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+
+[[test]]
+name = "integration"
+path = "tests/integration/mod.rs"
+
+[[test]]
+name = "e2e"
+path = "tests/e2e/mod.rs"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

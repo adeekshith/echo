@@ -1,0 +1,30 @@
+FROM rust:alpine
+
+RUN apk add --no-cache musl-dev build-base
+
+WORKDIR /app
+
+# Cache dependency compilation
+COPY Cargo.toml Cargo.lock* ./
+RUN mkdir src && \
+    echo 'fn main() {}' > src/main.rs && \
+    echo '' > src/lib.rs && \
+    mkdir -p tests/integration tests/e2e && \
+    echo '' > tests/integration/mod.rs && \
+    echo '' > tests/e2e/mod.rs && \
+    cargo build --tests 2>/dev/null; \
+    rm -rf src tests && \
+    rm -rf target/debug/.fingerprint/ipecho* \
+           target/debug/.fingerprint/ipecho* \
+           target/debug/deps/ipecho* \
+           target/debug/deps/ipecho* \
+           target/debug/deps/e2e* \
+           target/debug/deps/integration* \
+           target/debug/ipecho* \
+           target/debug/ipecho*
+
+# Copy real source
+COPY src ./src
+COPY tests ./tests
+
+CMD ["cargo", "test", "--", "--nocapture"]
