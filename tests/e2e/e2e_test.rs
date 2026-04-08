@@ -4,11 +4,11 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::sync::RwLock;
 
-use client_echo::config::Config;
-use client_echo::lookup::IpLookupTable;
-use client_echo::providers::ProviderRecord;
-use client_echo::routes::create_router;
-use client_echo::state::{AppState, SyncStatus};
+use ipecho::config::Config;
+use ipecho::lookup::IpLookupTable;
+use ipecho::providers::ProviderRecord;
+use ipecho::routes::create_router;
+use ipecho::state::{AppState, SyncStatus};
 
 fn test_config() -> Config {
     Config {

@@ -14,14 +14,14 @@ RUN mkdir src && \
     echo '' > tests/e2e/mod.rs && \
     cargo build --tests 2>/dev/null; \
     rm -rf src tests && \
-    rm -rf target/debug/.fingerprint/client_echo* \
-           target/debug/.fingerprint/client-echo* \
-           target/debug/deps/client_echo* \
-           target/debug/deps/client-echo* \
+    rm -rf target/debug/.fingerprint/ipecho* \
+           target/debug/.fingerprint/ipecho* \
+           target/debug/deps/ipecho* \
+           target/debug/deps/ipecho* \
            target/debug/deps/e2e* \
            target/debug/deps/integration* \
-           target/debug/client-echo* \
-           target/debug/client_echo*
+           target/debug/ipecho* \
+           target/debug/ipecho*
 
 # Copy real source
 COPY src ./src

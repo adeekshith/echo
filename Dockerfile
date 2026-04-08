@@ -11,12 +11,12 @@ RUN mkdir src && \
     echo '' > src/lib.rs && \
     cargo build --release 2>/dev/null; \
     rm -rf src && \
-    rm -rf target/release/.fingerprint/client_echo* \
-           target/release/.fingerprint/client-echo* \
-           target/release/deps/client_echo* \
-           target/release/deps/client-echo* \
-           target/release/client-echo* \
-           target/release/client_echo*
+    rm -rf target/release/.fingerprint/ipecho* \
+           target/release/.fingerprint/ipecho* \
+           target/release/deps/ipecho* \
+           target/release/deps/ipecho* \
+           target/release/ipecho* \
+           target/release/ipecho*
 
 # Copy real source and build
 COPY src ./src
@@ -28,7 +28,7 @@ RUN apk add --no-cache ca-certificates
 
 WORKDIR /app
 
-COPY --from=builder /app/target/release/client-echo /usr/local/bin/client-echo
+COPY --from=builder /app/target/release/ipecho /usr/local/bin/ipecho
 
 ENV PORT=8083 \
     LOG_LEVEL=info \
@@ -36,4 +36,4 @@ ENV PORT=8083 \
 
 EXPOSE 8083
 
-ENTRYPOINT ["client-echo"]
+ENTRYPOINT ["ipecho"]

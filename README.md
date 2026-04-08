@@ -1,4 +1,4 @@
-# client-echo
+# ipecho
 
 A lightweight service that returns client connection metadata as pretty-printed JSON, similar to [ifconfig.me](https://ifconfig.me). Identifies cloud provider and region by matching the client IP against AWS, GCP, and Oracle IP ranges synced every 12 hours.
 
@@ -35,16 +35,16 @@ curl http://localhost:8083
 ### Docker
 
 ```bash
-docker build -t client-echo .
-docker run -p 8083:8083 client-echo
+docker build -t ipecho .
+docker run -p 8083:8083 ipecho
 ```
 
 ### Test
 
 ```bash
 # Run all tests (unit + integration + e2e) inside Docker
-docker build -f Dockerfile.test -t client-echo-test .
-docker run --rm client-echo-test
+docker build -f Dockerfile.test -t ipecho-test .
+docker run --rm ipecho-test
 ```
 
 ## Endpoints

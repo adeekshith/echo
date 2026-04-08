@@ -59,7 +59,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build test image
-        run: docker build -f Dockerfile.test -t client-echo-test .
+        run: docker build -f Dockerfile.test -t ipecho-test .
 
       - name: Run tests
-        run: docker run --rm client-echo-test
+        run: docker run --rm ipecho-test
