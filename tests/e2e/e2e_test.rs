@@ -89,9 +89,9 @@ async fn test_e2e_echo_endpoint() {
 
     let json: serde_json::Value = serde_json::from_str(&body).unwrap();
     assert_eq!(json["ip"], "127.0.0.1");
-    assert_eq!(json["user_agent"], "e2e-test/1.0");
+    assert_eq!(json["headers"]["user-agent"], "e2e-test/1.0");
     // 127.0.0.1 matches our seeded 127.0.0.0/8 → aws
-    assert_eq!(json["cloud_provider"], "aws");
+    assert_eq!(json["provider"], "aws");
     assert_eq!(json["region"], "us-east-1");
     assert!(json["headers"].is_object());
 }

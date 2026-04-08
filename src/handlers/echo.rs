@@ -13,12 +13,10 @@ use crate::state::AppState;
 #[derive(Debug, Serialize)]
 pub struct EchoResponse {
     pub ip: String,
-    pub user_agent: Option<String>,
-    pub host: Option<String>,
-    pub headers: BTreeMap<String, String>,
-    pub cloud_provider: Option<String>,
+    pub provider: Option<String>,
     pub region: Option<String>,
     pub service: Option<String>,
+    pub headers: BTreeMap<String, String>,
 }
 
 pub async fn echo_handler(
@@ -30,16 +28,6 @@ pub async fn echo_handler(
 
     let client_ip = extract_client_ip(&addr, &headers, &state.config);
 
-    let user_agent = headers
-        .get(header::USER_AGENT)
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string());
-
-    let host = headers
-        .get(header::HOST)
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string());
-
     let mut header_map = BTreeMap::new();
     for (name, value) in &headers {
         if let Ok(v) = value.to_str() {
@@ -47,7 +35,7 @@ pub async fn echo_handler(
         }
     }
 
-    let (cloud_provider, region, service) = {
+    let (provider, region, service) = {
         let table = state.lookup_table.read().await;
         match client_ip.parse::<IpAddr>() {
             Ok(ip) => match table.lookup(ip) {
@@ -73,12 +61,10 @@ pub async fn echo_handler(
 
     let response = EchoResponse {
         ip: client_ip,
-        user_agent,
-        host,
-        headers: header_map,
-        cloud_provider,
+        provider,
         region,
         service,
+        headers: header_map,
     };
 
     let body = serde_json::to_string_pretty(&response).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;

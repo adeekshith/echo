@@ -7,20 +7,18 @@ A lightweight service that returns client connection metadata as pretty-printed 
 ```json
 {
   "ip": "203.0.113.1",
-  "user_agent": "curl/8.7.1",
-  "host": "echo.example.com",
+  "provider": "aws",
+  "region": "us-east-1",
+  "service": "AMAZON",
   "headers": {
     "accept": "*/*",
     "host": "echo.example.com",
     "user-agent": "curl/8.7.1"
-  },
-  "cloud_provider": "aws",
-  "region": "us-east-1",
-  "service": "AMAZON"
+  }
 }
 ```
 
-If the client IP doesn't match any known cloud provider range, `cloud_provider`, `region`, and `service` will be `null`.
+If the client IP doesn't match any known provider range, `provider`, `region`, and `service` will be `null`.
 
 ## Quick Start
 

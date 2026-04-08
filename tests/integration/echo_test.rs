@@ -91,14 +91,15 @@ async fn test_echo_returns_json_with_headers() {
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(json["ip"], "127.0.0.1");
-    assert_eq!(json["user_agent"], "test-agent/1.0");
-    assert!(json["cloud_provider"].is_null());
+    assert!(json["provider"].is_null());
     assert!(json["region"].is_null());
     assert!(json["headers"].is_object());
+    // user_agent and host are available inside headers, not as top-level fields
+    assert_eq!(json["headers"]["user-agent"], "test-agent/1.0");
 }
 
 #[tokio::test]
-async fn test_echo_with_cloud_provider_match() {
+async fn test_echo_with_provider_match() {
     let state = test_state_with_table(seeded_lookup_table());
     let app = create_router(state);
 
@@ -113,7 +114,7 @@ async fn test_echo_with_cloud_provider_match() {
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(json["ip"], "3.0.0.1");
-    assert_eq!(json["cloud_provider"], "aws");
+    assert_eq!(json["provider"], "aws");
     assert_eq!(json["region"], "us-east-1");
     assert_eq!(json["service"], "AMAZON");
 }
