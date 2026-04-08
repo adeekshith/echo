@@ -138,6 +138,7 @@ No other changes required.
 | Provider | Source URL |
 |----------|-----------|
 | AWS | https://ip-ranges.amazonaws.com/ip-ranges.json |
+| Cloudflare | https://api.cloudflare.com/client/v4/ips |
 | GCP | https://www.gstatic.com/ipranges/cloud.json |
 | Oracle | https://docs.oracle.com/en-us/iaas/tools/public_ip_ranges.json |
 

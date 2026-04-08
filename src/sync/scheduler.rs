@@ -4,6 +4,7 @@ use tokio::time::MissedTickBehavior;
 
 use crate::lookup::IpLookupTable;
 use crate::providers::aws::AwsProvider;
+use crate::providers::cloudflare::CloudflareProvider;
 use crate::providers::gcp::GcpProvider;
 use crate::providers::oracle::OracleProvider;
 use crate::providers::{IpRangeProvider, ProviderRecord};
@@ -12,6 +13,7 @@ use crate::state::{AppState, SyncStatus};
 pub async fn start_sync_loop(state: AppState) {
     let providers: Vec<Box<dyn IpRangeProvider>> = vec![
         Box::new(AwsProvider),
+        Box::new(CloudflareProvider),
         Box::new(GcpProvider),
         Box::new(OracleProvider),
     ];
