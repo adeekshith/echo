@@ -176,6 +176,153 @@ async fn test_health_degraded_when_empty() {
     assert_eq!(json["status"], "degraded");
 }
 
+// --- Per-field endpoint tests ---
+
+#[tokio::test]
+async fn test_ip_endpoint_returns_plain_text() {
+    let state = test_state_with_table(IpLookupTable::empty());
+    let app = create_router(state);
+
+    let req = Request::builder()
+        .uri("/ip")
+        .extension(ConnectInfo(SocketAddr::from(([192, 168, 1, 42], 12345))))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers().get("content-type").unwrap(), "text/plain");
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(String::from_utf8(body.to_vec()).unwrap(), "192.168.1.42");
+}
+
+#[tokio::test]
+async fn test_provider_endpoint_with_match() {
+    let state = test_state_with_table(seeded_lookup_table());
+    let app = create_router(state);
+
+    let req = Request::builder()
+        .uri("/provider")
+        .extension(ConnectInfo(SocketAddr::from(([3, 0, 0, 1], 12345))))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers().get("content-type").unwrap(), "text/plain");
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(String::from_utf8(body.to_vec()).unwrap(), "aws");
+}
+
+#[tokio::test]
+async fn test_provider_endpoint_returns_204_when_unknown() {
+    let state = test_state_with_table(IpLookupTable::empty());
+    let app = create_router(state);
+
+    let req = Request::builder()
+        .uri("/provider")
+        .extension(ConnectInfo(SocketAddr::from(([192, 168, 1, 1], 12345))))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn test_region_endpoint_with_match() {
+    let state = test_state_with_table(seeded_lookup_table());
+    let app = create_router(state);
+
+    let req = Request::builder()
+        .uri("/region")
+        .extension(ConnectInfo(SocketAddr::from(([34, 0, 0, 1], 12345))))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(String::from_utf8(body.to_vec()).unwrap(), "us-central1");
+}
+
+#[tokio::test]
+async fn test_service_endpoint_returns_204_when_unknown() {
+    let state = test_state_with_table(IpLookupTable::empty());
+    let app = create_router(state);
+
+    let req = Request::builder()
+        .uri("/service")
+        .extension(ConnectInfo(SocketAddr::from(([192, 168, 1, 1], 12345))))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn test_headers_endpoint_returns_json() {
+    let state = test_state_with_table(IpLookupTable::empty());
+    let app = create_router(state);
+
+    let req = Request::builder()
+        .uri("/headers")
+        .header("x-custom", "hello")
+        .extension(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 12345))))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers().get("content-type").unwrap(),
+        "application/json"
+    );
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["x-custom"], "hello");
+}
+
+#[tokio::test]
+async fn test_header_by_name_returns_value() {
+    let state = test_state_with_table(IpLookupTable::empty());
+    let app = create_router(state);
+
+    let req = Request::builder()
+        .uri("/headers/user-agent")
+        .header("user-agent", "test-agent/2.0")
+        .extension(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 12345))))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers().get("content-type").unwrap(), "text/plain");
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(String::from_utf8(body.to_vec()).unwrap(), "test-agent/2.0");
+}
+
+#[tokio::test]
+async fn test_header_by_name_returns_404_for_missing() {
+    let state = test_state_with_table(IpLookupTable::empty());
+    let app = create_router(state);
+
+    let req = Request::builder()
+        .uri("/headers/x-nonexistent")
+        .extension(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 12345))))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
 #[tokio::test]
 async fn test_metrics_endpoint() {
     let state = test_state_with_table(IpLookupTable::empty());

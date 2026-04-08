@@ -76,11 +76,34 @@ docker run --rm ipecho-test
 
 ## Endpoints
 
-| Endpoint | Description |
-|----------|-------------|
-| `GET /` | Client info as pretty-printed JSON |
-| `GET /health` | Per-provider sync status, total CIDRs, degraded/ok |
-| `GET /metrics` | Prometheus metrics (text format) |
+| Endpoint | Content-Type | Description |
+|----------|-------------|-------------|
+| `GET /` | `application/json` | Full client info as pretty-printed JSON |
+| `GET /ip` | `text/plain` | Client IP address |
+| `GET /provider` | `text/plain` | Provider name (or 204 if unknown) |
+| `GET /region` | `text/plain` | Region (or 204 if unknown) |
+| `GET /service` | `text/plain` | Service name (or 204 if unknown) |
+| `GET /headers` | `application/json` | All request headers as JSON |
+| `GET /headers/{name}` | `text/plain` | Single header value (or 404) |
+| `GET /health` | `application/json` | Per-provider sync status |
+| `GET /metrics` | `text/plain` | Prometheus metrics |
+
+### Examples
+
+```bash
+# Full JSON response
+curl http://localhost:8083
+
+# Just the IP
+curl http://localhost:8083/ip
+
+# Provider and region
+curl http://localhost:8083/provider
+curl http://localhost:8083/region
+
+# Specific header
+curl http://localhost:8083/headers/user-agent
+```
 
 ## Configuration
 

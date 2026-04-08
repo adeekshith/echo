@@ -135,6 +135,101 @@ async fn test_e2e_metrics_endpoint() {
 }
 
 #[tokio::test]
+async fn test_e2e_ip_endpoint() {
+    let (base_url, _handle) = start_test_server().await;
+    let client = reqwest::Client::new();
+
+    let resp = client.get(format!("{}/ip", base_url)).send().await.unwrap();
+
+    assert_eq!(resp.status(), 200);
+    assert_eq!(resp.headers().get("content-type").unwrap(), "text/plain");
+
+    let body = resp.text().await.unwrap();
+    assert_eq!(body, "127.0.0.1");
+}
+
+#[tokio::test]
+async fn test_e2e_provider_endpoint() {
+    let (base_url, _handle) = start_test_server().await;
+    let client = reqwest::Client::new();
+
+    // 127.0.0.1 matches seeded 127.0.0.0/8 → aws
+    let resp = client
+        .get(format!("{}/provider", base_url))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 200);
+    let body = resp.text().await.unwrap();
+    assert_eq!(body, "aws");
+}
+
+#[tokio::test]
+async fn test_e2e_region_endpoint() {
+    let (base_url, _handle) = start_test_server().await;
+    let client = reqwest::Client::new();
+
+    let resp = client
+        .get(format!("{}/region", base_url))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 200);
+    let body = resp.text().await.unwrap();
+    assert_eq!(body, "us-east-1");
+}
+
+#[tokio::test]
+async fn test_e2e_headers_endpoint() {
+    let (base_url, _handle) = start_test_server().await;
+    let client = reqwest::Client::new();
+
+    let resp = client
+        .get(format!("{}/headers", base_url))
+        .header("x-test", "e2e-value")
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 200);
+    let json: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(json["x-test"], "e2e-value");
+}
+
+#[tokio::test]
+async fn test_e2e_header_by_name() {
+    let (base_url, _handle) = start_test_server().await;
+    let client = reqwest::Client::new();
+
+    let resp = client
+        .get(format!("{}/headers/x-custom", base_url))
+        .header("x-custom", "my-value")
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 200);
+    let body = resp.text().await.unwrap();
+    assert_eq!(body, "my-value");
+}
+
+#[tokio::test]
+async fn test_e2e_header_by_name_missing_returns_404() {
+    let (base_url, _handle) = start_test_server().await;
+    let client = reqwest::Client::new();
+
+    let resp = client
+        .get(format!("{}/headers/x-nonexistent", base_url))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 404);
+}
+
+#[tokio::test]
 async fn test_e2e_unknown_path_returns_404() {
     let (base_url, _handle) = start_test_server().await;
     let client = reqwest::Client::new();

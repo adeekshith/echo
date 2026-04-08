@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
-use axum::extract::{ConnectInfo, State};
+use axum::extract::{ConnectInfo, Path, State};
 use axum::http::header::HeaderMap;
 use axum::http::{header, Response, StatusCode};
 use axum::body::Body;
@@ -19,17 +19,23 @@ pub struct EchoResponse {
     pub headers: BTreeMap<String, String>,
 }
 
-pub async fn echo_handler(
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
-) -> Result<Response<Body>, StatusCode> {
-    metrics::counter!("http_requests_total", "endpoint" => "/").increment(1);
+struct EchoData {
+    ip: String,
+    provider: Option<String>,
+    region: Option<String>,
+    service: Option<String>,
+    headers: BTreeMap<String, String>,
+}
 
-    let client_ip = extract_client_ip(&addr, &headers, &state.config);
+async fn build_echo_data(
+    addr: &SocketAddr,
+    headers: &HeaderMap,
+    state: &AppState,
+) -> EchoData {
+    let client_ip = extract_client_ip(addr, headers, &state.config);
 
     let mut header_map = BTreeMap::new();
-    for (name, value) in &headers {
+    for (name, value) in headers {
         if let Ok(v) = value.to_str() {
             header_map.insert(name.to_string(), v.to_string());
         }
@@ -59,15 +65,55 @@ pub async fn echo_handler(
         }
     };
 
-    let response = EchoResponse {
+    EchoData {
         ip: client_ip,
         provider,
         region,
         service,
         headers: header_map,
+    }
+}
+
+fn plain_text_response(body: String) -> Result<Response<Body>, StatusCode> {
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "text/plain")
+        .header(header::CACHE_CONTROL, "no-store")
+        .body(Body::from(body))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+fn optional_plain_text_response(value: Option<String>) -> Result<Response<Body>, StatusCode> {
+    match value {
+        Some(v) => plain_text_response(v),
+        None => Response::builder()
+            .status(StatusCode::NO_CONTENT)
+            .header(header::CACHE_CONTROL, "no-store")
+            .body(Body::empty())
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR),
+    }
+}
+
+// GET / — full JSON response
+pub async fn echo_handler(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Response<Body>, StatusCode> {
+    metrics::counter!("http_requests_total", "endpoint" => "/").increment(1);
+
+    let data = build_echo_data(&addr, &headers, &state).await;
+
+    let response = EchoResponse {
+        ip: data.ip,
+        provider: data.provider,
+        region: data.region,
+        service: data.service,
+        headers: data.headers,
     };
 
-    let body = serde_json::to_string_pretty(&response).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let body = serde_json::to_string_pretty(&response)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Response::builder()
         .status(StatusCode::OK)
@@ -77,7 +123,98 @@ pub async fn echo_handler(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
-fn extract_client_ip(addr: &SocketAddr, headers: &HeaderMap, config: &crate::config::Config) -> String {
+// GET /ip — plain text IP address
+pub async fn ip_handler(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Response<Body>, StatusCode> {
+    metrics::counter!("http_requests_total", "endpoint" => "/ip").increment(1);
+    let ip = extract_client_ip(&addr, &headers, &state.config);
+    plain_text_response(ip)
+}
+
+// GET /provider — plain text provider or 204
+pub async fn provider_handler(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Response<Body>, StatusCode> {
+    metrics::counter!("http_requests_total", "endpoint" => "/provider").increment(1);
+    let data = build_echo_data(&addr, &headers, &state).await;
+    optional_plain_text_response(data.provider)
+}
+
+// GET /region — plain text region or 204
+pub async fn region_handler(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Response<Body>, StatusCode> {
+    metrics::counter!("http_requests_total", "endpoint" => "/region").increment(1);
+    let data = build_echo_data(&addr, &headers, &state).await;
+    optional_plain_text_response(data.region)
+}
+
+// GET /service — plain text service or 204
+pub async fn service_handler(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Response<Body>, StatusCode> {
+    metrics::counter!("http_requests_total", "endpoint" => "/service").increment(1);
+    let data = build_echo_data(&addr, &headers, &state).await;
+    optional_plain_text_response(data.service)
+}
+
+// GET /headers — pretty JSON of all headers
+pub async fn headers_handler(
+    headers: HeaderMap,
+) -> Result<Response<Body>, StatusCode> {
+    metrics::counter!("http_requests_total", "endpoint" => "/headers").increment(1);
+
+    let mut header_map = BTreeMap::new();
+    for (name, value) in &headers {
+        if let Ok(v) = value.to_str() {
+            header_map.insert(name.to_string(), v.to_string());
+        }
+    }
+
+    let body = serde_json::to_string_pretty(&header_map)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::CACHE_CONTROL, "no-store")
+        .body(Body::from(body))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+// GET /headers/:name — single header value or 404
+pub async fn header_by_name_handler(
+    Path(name): Path<String>,
+    headers: HeaderMap,
+) -> Result<Response<Body>, StatusCode> {
+    metrics::counter!("http_requests_total", "endpoint" => "/headers/{name}").increment(1);
+
+    let name_lower = name.to_lowercase();
+    for (key, value) in &headers {
+        if key.as_str() == name_lower {
+            if let Ok(v) = value.to_str() {
+                return plain_text_response(v.to_string());
+            }
+        }
+    }
+
+    Err(StatusCode::NOT_FOUND)
+}
+
+fn extract_client_ip(
+    addr: &SocketAddr,
+    headers: &HeaderMap,
+    config: &crate::config::Config,
+) -> String {
     let peer_ip = addr.ip();
 
     if config.is_trusted_proxy(&peer_ip) {

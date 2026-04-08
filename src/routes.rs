@@ -15,9 +15,15 @@ pub fn create_router(state: AppState) -> Router {
         state.config.rate_limit_burst,
     );
 
-    // Rate-limited routes (echo endpoint)
+    // Rate-limited routes (public echo endpoints)
     let rate_limited = Router::new()
         .route("/", get(echo::echo_handler))
+        .route("/ip", get(echo::ip_handler))
+        .route("/provider", get(echo::provider_handler))
+        .route("/region", get(echo::region_handler))
+        .route("/service", get(echo::service_handler))
+        .route("/headers", get(echo::headers_handler))
+        .route("/headers/{name}", get(echo::header_by_name_handler))
         .route_layer(axum::middleware::from_fn_with_state(
             rl_state,
             rate_limit_middleware,
