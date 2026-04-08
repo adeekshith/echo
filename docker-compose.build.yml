@@ -1,6 +1,6 @@
 services:
-  ipecho:
-    image: ghcr.io/adeekshith/echo:latest
+  echo:
+    build: .
     ports:
       - "${PORT:-8083}:${PORT:-8083}"
     environment:

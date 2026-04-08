@@ -24,13 +24,36 @@ If the client IP doesn't match any known cloud provider range, `cloud_provider`,
 
 ## Quick Start
 
-### Docker Compose (recommended)
+### Docker (pre-built image)
+
+```bash
+docker run -p 8083:8083 ghcr.io/adeekshith/echo:latest
+curl http://localhost:8083
+```
+
+### Docker Compose (pre-built image)
 
 ```bash
 cp .env.example .env    # edit as needed
 docker compose up -d
 curl http://localhost:8083
 ```
+
+### Docker Compose with custom configuration
+
+```bash
+docker compose up -d -e PORT=9090 -e LOG_LEVEL=debug
+```
+
+Or override environment variables in `.env`:
+
+```bash
+PORT=9090
+LOG_LEVEL=debug
+RATE_LIMIT_PER_SECOND=50
+```
+
+## Building from Source
 
 ### Docker
 
@@ -39,7 +62,13 @@ docker build -t ipecho .
 docker run -p 8083:8083 ipecho
 ```
 
-### Test
+### Docker Compose (build from source)
+
+```bash
+docker compose -f docker-compose.build.yml up -d
+```
+
+### Run Tests
 
 ```bash
 # Run all tests (unit + integration + e2e) inside Docker
