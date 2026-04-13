@@ -11,6 +11,7 @@ pub struct Config {
     pub trusted_proxies: Vec<IpNet>,
     pub rate_limit_per_second: u64,
     pub rate_limit_burst: u32,
+    pub excluded_headers: Vec<String>,
 }
 
 impl Config {
@@ -45,6 +46,13 @@ impl Config {
             .and_then(|v| v.parse().ok())
             .unwrap_or(20);
 
+        let excluded_headers = env::var("EXCLUDED_HEADERS")
+            .unwrap_or_default()
+            .split(',')
+            .map(|s| s.trim().to_lowercase())
+            .filter(|s| !s.is_empty())
+            .collect();
+
         Self {
             port,
             sync_interval_secs,
@@ -52,11 +60,16 @@ impl Config {
             trusted_proxies,
             rate_limit_per_second,
             rate_limit_burst,
+            excluded_headers,
         }
     }
 
     pub fn is_trusted_proxy(&self, ip: &IpAddr) -> bool {
         self.trusted_proxies.iter().any(|net| net.contains(ip))
+    }
+
+    pub fn is_header_excluded(&self, name: &str) -> bool {
+        self.excluded_headers.iter().any(|h| h == name)
     }
 }
 
@@ -83,6 +96,7 @@ mod tests {
         assert_eq!(config.trusted_proxies.len(), 4);
         assert_eq!(config.rate_limit_per_second, 10);
         assert_eq!(config.rate_limit_burst, 20);
+        assert!(config.excluded_headers.is_empty());
     }
 
     #[test]
@@ -94,6 +108,7 @@ mod tests {
             trusted_proxies: vec!["10.0.0.0/8".parse().unwrap()],
             rate_limit_per_second: 10,
             rate_limit_burst: 20,
+            excluded_headers: vec![],
         };
 
         let trusted: IpAddr = "10.0.0.1".parse().unwrap();

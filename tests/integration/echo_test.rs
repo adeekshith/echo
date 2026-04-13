@@ -23,6 +23,7 @@ fn test_config() -> Config {
         trusted_proxies: vec!["10.0.0.0/8".parse().unwrap()],
         rate_limit_per_second: 100,
         rate_limit_burst: 100,
+        excluded_headers: vec![],
     }
 }
 
@@ -315,6 +316,93 @@ async fn test_header_by_name_returns_404_for_missing() {
 
     let req = Request::builder()
         .uri("/headers/x-nonexistent")
+        .extension(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 12345))))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+// --- Header exclusion tests ---
+
+fn test_config_with_excluded_headers() -> Config {
+    Config {
+        port: 8083,
+        sync_interval_secs: 43200,
+        log_level: "info".to_string(),
+        trusted_proxies: vec!["10.0.0.0/8".parse().unwrap()],
+        rate_limit_per_second: 100,
+        rate_limit_burst: 100,
+        excluded_headers: vec![
+            "x-forwarded-for".to_string(),
+            "x-forwarded-host".to_string(),
+            "via".to_string(),
+        ],
+    }
+}
+
+fn test_state_with_exclusions(table: IpLookupTable) -> AppState {
+    AppState {
+        lookup_table: Arc::new(RwLock::new(table)),
+        sync_status: Arc::new(RwLock::new(vec![])),
+        config: Arc::new(test_config_with_excluded_headers()),
+        metrics_handle: test_metrics_handle(),
+    }
+}
+
+#[tokio::test]
+async fn test_excluded_headers_omitted_from_echo() {
+    let state = test_state_with_exclusions(IpLookupTable::empty());
+    let app = create_router(state);
+
+    let req = Request::builder()
+        .uri("/")
+        .header("user-agent", "test/1.0")
+        .header("x-forwarded-for", "1.2.3.4")
+        .header("via", "2.0 Caddy")
+        .extension(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 12345))))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(json["headers"]["user-agent"], "test/1.0");
+    assert!(json["headers"].get("x-forwarded-for").is_none());
+    assert!(json["headers"].get("via").is_none());
+}
+
+#[tokio::test]
+async fn test_excluded_headers_omitted_from_headers_endpoint() {
+    let state = test_state_with_exclusions(IpLookupTable::empty());
+    let app = create_router(state);
+
+    let req = Request::builder()
+        .uri("/headers")
+        .header("accept", "*/*")
+        .header("x-forwarded-host", "example.com")
+        .extension(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 12345))))
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(req).await.unwrap();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(json["accept"], "*/*");
+    assert!(json.get("x-forwarded-host").is_none());
+}
+
+#[tokio::test]
+async fn test_excluded_header_returns_404_by_name() {
+    let state = test_state_with_exclusions(IpLookupTable::empty());
+    let app = create_router(state);
+
+    let req = Request::builder()
+        .uri("/headers/x-forwarded-for")
+        .header("x-forwarded-for", "1.2.3.4")
         .extension(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 12345))))
         .body(Body::empty())
         .unwrap();

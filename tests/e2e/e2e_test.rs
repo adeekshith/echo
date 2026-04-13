@@ -18,6 +18,7 @@ fn test_config() -> Config {
         trusted_proxies: vec!["127.0.0.1/32".parse().unwrap()],
         rate_limit_per_second: 100,
         rate_limit_burst: 100,
+        excluded_headers: vec![],
     }
 }
 

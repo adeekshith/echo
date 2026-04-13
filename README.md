@@ -117,6 +117,7 @@ All configuration is via environment variables:
 | `TRUSTED_PROXIES` | `127.0.0.1/32,...` | CIDRs to trust XFF/X-Real-IP from |
 | `RATE_LIMIT_PER_SECOND` | `10` | Requests per IP per second |
 | `RATE_LIMIT_BURST` | `20` | Burst capacity per IP |
+| `EXCLUDED_HEADERS` | *(empty)* | Comma-separated headers to hide from responses |
 
 ## Architecture
 

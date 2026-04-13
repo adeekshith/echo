@@ -34,12 +34,7 @@ async fn build_echo_data(
 ) -> EchoData {
     let client_ip = extract_client_ip(addr, headers, &state.config);
 
-    let mut header_map = BTreeMap::new();
-    for (name, value) in headers {
-        if let Ok(v) = value.to_str() {
-            header_map.insert(name.to_string(), v.to_string());
-        }
-    }
+    let header_map = filter_headers(headers, &state.config.excluded_headers);
 
     let (provider, region, service) = {
         let table = state.lookup_table.read().await;
@@ -72,6 +67,20 @@ async fn build_echo_data(
         service,
         headers: header_map,
     }
+}
+
+fn filter_headers(headers: &HeaderMap, excluded: &[String]) -> BTreeMap<String, String> {
+    let mut map = BTreeMap::new();
+    for (name, value) in headers {
+        let name_str = name.as_str();
+        if excluded.iter().any(|e| e == name_str) {
+            continue;
+        }
+        if let Ok(v) = value.to_str() {
+            map.insert(name_str.to_string(), v.to_string());
+        }
+    }
+    map
 }
 
 fn plain_text_response(body: String) -> Result<Response<Body>, StatusCode> {
@@ -169,16 +178,12 @@ pub async fn service_handler(
 
 // GET /headers — pretty JSON of all headers
 pub async fn headers_handler(
+    State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Result<Response<Body>, StatusCode> {
     metrics::counter!("http_requests_total", "endpoint" => "/headers").increment(1);
 
-    let mut header_map = BTreeMap::new();
-    for (name, value) in &headers {
-        if let Ok(v) = value.to_str() {
-            header_map.insert(name.to_string(), v.to_string());
-        }
-    }
+    let header_map = filter_headers(&headers, &state.config.excluded_headers);
 
     let body = serde_json::to_string_pretty(&header_map)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -194,11 +199,17 @@ pub async fn headers_handler(
 // GET /headers/:name — single header value or 404
 pub async fn header_by_name_handler(
     Path(name): Path<String>,
+    State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Result<Response<Body>, StatusCode> {
     metrics::counter!("http_requests_total", "endpoint" => "/headers/{name}").increment(1);
 
     let name_lower = name.to_lowercase();
+
+    if state.config.is_header_excluded(&name_lower) {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
     for (key, value) in &headers {
         if key.as_str() == name_lower {
             if let Ok(v) = value.to_str() {
@@ -253,6 +264,7 @@ mod tests {
             trusted_proxies: vec!["10.0.0.0/8".parse().unwrap()],
             rate_limit_per_second: 10,
             rate_limit_burst: 20,
+            excluded_headers: vec![],
         }
     }
 
