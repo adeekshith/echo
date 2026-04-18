@@ -4,7 +4,7 @@ use axum::body::Body;
 use axum::extract::State;
 use axum::http::{header, Response, StatusCode};
 
-use super::super::errors::AppError;
+use crate::errors::AppError;
 use crate::state::AppState;
 
 pub async fn metrics_handler(

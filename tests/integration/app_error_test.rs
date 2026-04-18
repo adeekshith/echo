@@ -42,7 +42,7 @@ fn test_state_with_table(table: IpLookupTable) -> AppState {
 }
 
 #[tokio::test]
-async fn test_json_serialization_error_returns_500() {
+async fn test_echo_endpoint_returns_ok() {
     let state = test_state_with_table(IpLookupTable::empty());
     let app = create_router(state);
 
@@ -94,7 +94,7 @@ async fn test_error_response_is_json() {
 }
 
 #[tokio::test]
-async fn test_http_builder_error_returns_500() {
+async fn test_metrics_endpoint_returns_ok() {
     let state = test_state_with_table(IpLookupTable::empty());
     let app = create_router(state);
 

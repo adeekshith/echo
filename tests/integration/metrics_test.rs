@@ -28,7 +28,8 @@ fn test_config() -> Config {
 }
 
 fn test_metrics_handle() -> metrics_exporter_prometheus::PrometheusHandle {
-    PrometheusBuilder::new().install_recorder().unwrap()
+    let recorder = PrometheusBuilder::new().build_recorder();
+    recorder.handle()
 }
 
 fn test_state_with_table(table: IpLookupTable) -> AppState {

@@ -47,3 +47,9 @@ impl IntoResponse for AppError {
             .unwrap_or_else(|_| Response::new(axum::body::Body::from("Internal Server Error")))
     }
 }
+
+impl From<AppError> for StatusCode {
+    fn from(err: AppError) -> Self {
+        err.status_code()
+    }
+}

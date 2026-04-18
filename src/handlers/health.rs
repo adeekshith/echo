@@ -5,7 +5,7 @@ use axum::http::{header, Response, StatusCode};
 use axum::body::Body;
 use serde::Serialize;
 
-use super::super::errors::AppError;
+use crate::errors::AppError;
 use crate::state::AppState;
 
 #[derive(Serialize)]
