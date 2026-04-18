@@ -172,6 +172,11 @@ async fn test_health_degraded_when_empty() {
         .unwrap();
 
     let response = app.oneshot(req).await.unwrap();
+    assert_eq!(
+        response.status(),
+        StatusCode::SERVICE_UNAVAILABLE,
+        "degraded state should return 503 so readiness probes stop routing traffic"
+    );
     let body = response.into_body().collect().await.unwrap().to_bytes();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
