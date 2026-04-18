@@ -58,6 +58,7 @@ fn test_state_with_table(table: IpLookupTable) -> AppState {
             cidr_count: 1,
             last_error: None,
         }])),
+        provider_records: Arc::new(RwLock::new(std::collections::HashMap::new())),
         config: Arc::new(test_config()),
         metrics_handle: test_metrics_handle(),
     }
@@ -346,6 +347,7 @@ fn test_state_with_exclusions(table: IpLookupTable) -> AppState {
     AppState {
         lookup_table: Arc::new(RwLock::new(table)),
         sync_status: Arc::new(RwLock::new(vec![])),
+        provider_records: Arc::new(RwLock::new(std::collections::HashMap::new())),
         config: Arc::new(test_config_with_excluded_headers()),
         metrics_handle: test_metrics_handle(),
     }

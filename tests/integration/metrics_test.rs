@@ -38,6 +38,7 @@ fn test_state_with_table(table: IpLookupTable) -> AppState {
     AppState {
         lookup_table: Arc::new(RwLock::new(table)),
         sync_status: Arc::new(RwLock::new(vec![])),
+        provider_records: Arc::new(RwLock::new(std::collections::HashMap::new())),
         config: Arc::new(test_config()),
         metrics_handle: test_metrics_handle(),
     }
@@ -118,6 +119,7 @@ async fn test_rate_limit_rejected_counter_incremented() {
     let state = AppState {
         lookup_table: Arc::new(RwLock::new(IpLookupTable::empty())),
         sync_status: Arc::new(RwLock::new(vec![])),
+        provider_records: Arc::new(RwLock::new(std::collections::HashMap::new())),
         config: Arc::new(config),
         metrics_handle: test_metrics_handle(),
     };

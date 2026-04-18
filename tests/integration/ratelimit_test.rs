@@ -35,6 +35,7 @@ fn test_state_with_table(table: IpLookupTable) -> AppState {
     AppState {
         lookup_table: Arc::new(RwLock::new(table)),
         sync_status: Arc::new(RwLock::new(vec![])),
+        provider_records: Arc::new(RwLock::new(std::collections::HashMap::new())),
         config: Arc::new(test_config()),
         metrics_handle: test_metrics_handle(),
     }

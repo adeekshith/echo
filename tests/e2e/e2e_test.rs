@@ -42,6 +42,7 @@ async fn start_test_server() -> (String, tokio::task::JoinHandle<()>) {
             cidr_count: 1,
             last_error: None,
         }])),
+        provider_records: Arc::new(RwLock::new(std::collections::HashMap::new())),
         config: Arc::new(test_config()),
         metrics_handle: handle,
     };
