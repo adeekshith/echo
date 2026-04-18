@@ -1,4 +1,5 @@
 pub mod config;
+pub mod errors;
 pub mod handlers;
 pub mod lookup;
 pub mod providers;

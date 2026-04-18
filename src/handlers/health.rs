@@ -5,6 +5,7 @@ use axum::http::{header, Response, StatusCode};
 use axum::body::Body;
 use serde::Serialize;
 
+use super::super::errors::AppError;
 use crate::state::AppState;
 
 #[derive(Serialize)]
@@ -24,7 +25,7 @@ struct ProviderHealth {
 
 pub async fn health_handler(
     State(state): State<Arc<AppState>>,
-) -> Result<Response<Body>, StatusCode> {
+) -> Result<Response<Body>, AppError> {
     let sync_status = state.sync_status.read().await;
     let table = state.lookup_table.read().await;
 
@@ -44,12 +45,11 @@ pub async fn health_handler(
         providers,
     };
 
-    let body =
-        serde_json::to_string_pretty(&response).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let body = serde_json::to_string_pretty(&response)?;
 
     Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "application/json")
         .body(Body::from(body))
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+        .map_err(|_| AppError::HttpBuilderError)
 }
