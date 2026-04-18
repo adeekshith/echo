@@ -193,10 +193,12 @@ tokio::select! {
 
 1. **P0 (Critical):** Fix Dockerfile deduplication bug
 2. **P1 (High):** Standardize error handling with thiserror ✅ **COMPLETED**
-3. **P1 (High):** Add config validation at startup
-4. **P2 (Medium):** Add graceful shutdown handler
-5. **P2 (Medium):** Add request ID correlation
-6. **P3 (Low):** Switch to radix tree for lookups
-7. **P3 (Low):** Add latency histograms
-8. **P3 (Low):** Pin dependency versions
-9. **P3 (Low):** Enhance health endpoint
+3. **P1 (High):** Add integration tests for error handling ✅ **COMPLETED**
+4. **P1 (High):** Add integration tests for rate limiting ✅ **COMPLETED**
+5. **P1 (High):** Add config validation at startup
+6. **P2 (Medium):** Add graceful shutdown handler
+7. **P2 (Medium):** Add request ID correlation
+8. **P3 (Low):** Switch to radix tree for lookups
+9. **P3 (Low):** Add latency histograms
+10. **P3 (Low):** Pin dependency versions
+11. **P3 (Low):** Enhance health endpoint
