@@ -8,6 +8,7 @@ use axum::http::{header, Response, StatusCode};
 use axum::body::Body;
 use serde::Serialize;
 
+use crate::errors::AppError;
 use crate::state::AppState;
 
 #[derive(Debug, Serialize)]
@@ -83,23 +84,23 @@ fn filter_headers(headers: &HeaderMap, excluded: &[String]) -> BTreeMap<String, 
     map
 }
 
-fn plain_text_response(body: String) -> Result<Response<Body>, StatusCode> {
+fn plain_text_response(body: String) -> Result<Response<Body>, AppError> {
     Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "text/plain")
         .header(header::CACHE_CONTROL, "no-store")
         .body(Body::from(body))
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+        .map_err(|_| AppError::HttpBuilderError)
 }
 
-fn optional_plain_text_response(value: Option<String>) -> Result<Response<Body>, StatusCode> {
+fn optional_plain_text_response(value: Option<String>) -> Result<Response<Body>, AppError> {
     match value {
         Some(v) => plain_text_response(v),
         None => Response::builder()
             .status(StatusCode::NO_CONTENT)
             .header(header::CACHE_CONTROL, "no-store")
             .body(Body::empty())
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR),
+            .map_err(|_| AppError::HttpBuilderError),
     }
 }
 
@@ -108,7 +109,7 @@ pub async fn echo_handler(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
-) -> Result<Response<Body>, StatusCode> {
+) -> Result<Response<Body>, AppError> {
     metrics::counter!("http_requests_total", "endpoint" => "/").increment(1);
 
     let data = build_echo_data(&addr, &headers, &state).await;
@@ -121,15 +122,14 @@ pub async fn echo_handler(
         headers: data.headers,
     };
 
-    let body = serde_json::to_string_pretty(&response)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let body = serde_json::to_string_pretty(&response)?;
 
     Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "application/json")
         .header(header::CACHE_CONTROL, "no-store")
         .body(Body::from(body))
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+        .map_err(|_| AppError::HttpBuilderError)
 }
 
 // GET /ip — plain text IP address
@@ -137,7 +137,7 @@ pub async fn ip_handler(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
-) -> Result<Response<Body>, StatusCode> {
+) -> Result<Response<Body>, AppError> {
     metrics::counter!("http_requests_total", "endpoint" => "/ip").increment(1);
     let ip = extract_client_ip(&addr, &headers, &state.config);
     plain_text_response(ip)
@@ -148,7 +148,7 @@ pub async fn provider_handler(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
-) -> Result<Response<Body>, StatusCode> {
+) -> Result<Response<Body>, AppError> {
     metrics::counter!("http_requests_total", "endpoint" => "/provider").increment(1);
     let data = build_echo_data(&addr, &headers, &state).await;
     optional_plain_text_response(data.provider)
@@ -159,7 +159,7 @@ pub async fn region_handler(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
-) -> Result<Response<Body>, StatusCode> {
+) -> Result<Response<Body>, AppError> {
     metrics::counter!("http_requests_total", "endpoint" => "/region").increment(1);
     let data = build_echo_data(&addr, &headers, &state).await;
     optional_plain_text_response(data.region)
@@ -170,7 +170,7 @@ pub async fn service_handler(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
-) -> Result<Response<Body>, StatusCode> {
+) -> Result<Response<Body>, AppError> {
     metrics::counter!("http_requests_total", "endpoint" => "/service").increment(1);
     let data = build_echo_data(&addr, &headers, &state).await;
     optional_plain_text_response(data.service)
@@ -180,20 +180,19 @@ pub async fn service_handler(
 pub async fn headers_handler(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
-) -> Result<Response<Body>, StatusCode> {
+) -> Result<Response<Body>, AppError> {
     metrics::counter!("http_requests_total", "endpoint" => "/headers").increment(1);
 
     let header_map = filter_headers(&headers, &state.config.excluded_headers);
 
-    let body = serde_json::to_string_pretty(&header_map)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let body = serde_json::to_string_pretty(&header_map)?;
 
     Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "application/json")
         .header(header::CACHE_CONTROL, "no-store")
         .body(Body::from(body))
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+        .map_err(|_| AppError::HttpBuilderError)
 }
 
 // GET /headers/:name — single header value or 404
@@ -201,13 +200,13 @@ pub async fn header_by_name_handler(
     Path(name): Path<String>,
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
-) -> Result<Response<Body>, StatusCode> {
+) -> Result<Response<Body>, AppError> {
     metrics::counter!("http_requests_total", "endpoint" => "/headers/{name}").increment(1);
 
     let name_lower = name.to_lowercase();
 
     if state.config.is_header_excluded(&name_lower) {
-        return Err(StatusCode::NOT_FOUND);
+        return Err(AppError::NotFound("header not found".to_string()));
     }
 
     for (key, value) in &headers {
@@ -218,7 +217,7 @@ pub async fn header_by_name_handler(
         }
     }
 
-    Err(StatusCode::NOT_FOUND)
+    Err(AppError::NotFound("header not found".to_string()))
 }
 
 fn extract_client_ip(

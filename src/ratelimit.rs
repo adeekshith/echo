@@ -10,6 +10,8 @@ use governor::clock::DefaultClock;
 use governor::state::keyed::DashMapStateStore;
 use governor::{Quota, RateLimiter};
 
+use crate::errors::AppError;
+
 type Limiter = RateLimiter<IpAddr, DashMapStateStore<IpAddr>, DefaultClock>;
 
 #[derive(Clone)]
@@ -31,7 +33,7 @@ pub async fn rate_limit_middleware(
     axum::extract::State(rl): axum::extract::State<RateLimitState>,
     request: Request<Body>,
     next: Next,
-) -> Result<Response<Body>, StatusCode> {
+) -> Result<Response<Body>, AppError> {
     let ip = addr.ip();
 
     match rl.limiter.check_key(&ip) {
@@ -46,8 +48,8 @@ pub async fn rate_limit_middleware(
                 .status(StatusCode::TOO_MANY_REQUESTS)
                 .header("content-type", "application/json")
                 .header("retry-after", "1")
-                .body(Body::from(serde_json::to_string_pretty(&body).unwrap()))
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+                .body(Body::from(serde_json::to_string_pretty(&body)?))
+                .map_err(|_| AppError::HttpBuilderError)
         }
     }
 }
