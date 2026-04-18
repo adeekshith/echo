@@ -33,7 +33,11 @@ pub async fn start_sync_loop(state: AppState) {
 
 async fn run_sync(providers: &[Box<dyn IpRangeProvider>], state: &AppState) {
     tracing::info!("starting IP range sync");
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(30))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
 
     // Fetch all providers concurrently
     let results = fetch_all_providers(providers, &client).await;
