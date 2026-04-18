@@ -85,7 +85,7 @@ fn filter_headers(headers: &HeaderMap, excluded: &[String]) -> BTreeMap<String, 
 }
 
 fn plain_text_response(body: String) -> Result<Response<Body>, AppError> {
-Response::builder()
+    Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "text/plain")
         .header(header::CACHE_CONTROL, "no-store")
@@ -185,7 +185,7 @@ pub async fn headers_handler(
 
     let header_map = filter_headers(&headers, &state.config.excluded_headers);
 
-let body = serde_json::to_string_pretty(&header_map)?;
+    let body = serde_json::to_string_pretty(&header_map)?;
 
     Response::builder()
         .status(StatusCode::OK)

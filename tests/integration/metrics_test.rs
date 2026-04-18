@@ -1,10 +1,9 @@
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use axum::body::Body;
 use axum::extract::ConnectInfo;
 use axum::http::{Request, StatusCode};
-use http_body_util::BodyExt;
 use metrics_exporter_prometheus::PrometheusBuilder;
 use tokio::sync::RwLock;
 use tower::ServiceExt;
@@ -13,7 +12,9 @@ use ipecho::config::Config;
 use ipecho::lookup::IpLookupTable;
 use ipecho::providers::ProviderRecord;
 use ipecho::routes::create_router;
-use ipecho::state::{AppState, SyncStatus};
+use ipecho::state::AppState;
+
+static METRICS_HANDLE: OnceLock<metrics_exporter_prometheus::PrometheusHandle> = OnceLock::new();
 
 fn test_config() -> Config {
     Config {
@@ -28,8 +29,9 @@ fn test_config() -> Config {
 }
 
 fn test_metrics_handle() -> metrics_exporter_prometheus::PrometheusHandle {
-    let recorder = PrometheusBuilder::new().build_recorder();
-    recorder.handle()
+    METRICS_HANDLE
+        .get_or_init(|| PrometheusBuilder::new().install_recorder().unwrap())
+        .clone()
 }
 
 fn test_state_with_table(table: IpLookupTable) -> AppState {
