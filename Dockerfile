@@ -12,10 +12,7 @@ RUN mkdir src && \
     cargo build --release 2>/dev/null; \
     rm -rf src && \
     rm -rf target/release/.fingerprint/ipecho* \
-           target/release/.fingerprint/ipecho* \
            target/release/deps/ipecho* \
-           target/release/deps/ipecho* \
-           target/release/ipecho* \
            target/release/ipecho*
 
 # Copy real source and build
@@ -24,7 +21,8 @@ RUN cargo build --release
 
 FROM alpine:3.21
 
-RUN apk add --no-cache ca-certificates
+RUN apk add --no-cache ca-certificates wget && \
+    adduser -D -u 10001 ipecho
 
 WORKDIR /app
 
@@ -34,6 +32,11 @@ ENV PORT=8083 \
     LOG_LEVEL=info \
     SYNC_INTERVAL_SECS=43200
 
+USER ipecho
+
 EXPOSE 8083
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=30s --retries=3 \
+    CMD wget -q -O- http://localhost:8083/health >/dev/null || exit 1
 
 ENTRYPOINT ["ipecho"]
