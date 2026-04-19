@@ -1,3 +1,16 @@
+//! HTTP-layer error type.
+//!
+//! This crate uses a two-tier error model:
+//!
+//! - **HTTP / handler layer** returns [`AppError`]. Variants map to specific
+//!   status codes, so handlers can `?`-propagate cleanly and axum turns them
+//!   into JSON responses via [`IntoResponse`].
+//! - **Provider / sync / background layer** returns `anyhow::Result`. Errors
+//!   there are never matched on — they are logged and surfaced through
+//!   `SyncStatus::last_error` as a string, so the extra ceremony of a typed
+//!   enum would buy nothing. `anyhow::Context` is used for attaching
+//!   human-readable context as errors bubble up.
+
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use thiserror::Error;
@@ -13,9 +26,6 @@ pub enum AppError {
     #[error("Header parsing failed")]
     HeaderError(#[from] axum::http::header::ToStrError),
 
-    #[error("Provider sync failed: {0}")]
-    ProviderError(String),
-
     #[error("Not found: {0}")]
     NotFound(String),
 }
@@ -26,7 +36,6 @@ impl AppError {
             Self::JsonError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::HttpBuilderError => StatusCode::INTERNAL_SERVER_ERROR,
             Self::HeaderError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            Self::ProviderError(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Self::NotFound(_) => StatusCode::NOT_FOUND,
         }
     }
