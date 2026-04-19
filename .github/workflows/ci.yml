@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  cargo-tests:
+    name: Cargo tests (unit + integration + e2e)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build test image
+        run: docker build -f Dockerfile.test -t ipecho-test .
+
+      - name: Run test suite
+        run: docker run --rm ipecho-test
+
+  smoke-tests:
+    name: Container smoke tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build production image
+        run: docker build -t ipecho-run .
+
+      - name: Run smoke script
+        run: ./scripts/smoke.sh ipecho-run
