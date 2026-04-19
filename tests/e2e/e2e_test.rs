@@ -237,6 +237,64 @@ async fn test_e2e_header_by_name_missing_returns_404() {
 }
 
 #[tokio::test]
+async fn test_e2e_request_id_echoed_when_inbound_header_present() {
+    let (base_url, _handle) = start_test_server().await;
+    let client = reqwest::Client::new();
+
+    let resp = client
+        .get(format!("{}/ip", base_url))
+        .header("x-request-id", "e2e-correlation-abc-123")
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 200);
+    assert_eq!(
+        resp.headers().get("x-request-id").unwrap(),
+        "e2e-correlation-abc-123",
+        "middleware should echo the inbound id so upstream callers can correlate"
+    );
+}
+
+#[tokio::test]
+async fn test_e2e_request_id_generated_when_absent() {
+    let (base_url, _handle) = start_test_server().await;
+    let client = reqwest::Client::new();
+
+    let resp = client
+        .get(format!("{}/ip", base_url))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 200);
+    let id = resp
+        .headers()
+        .get("x-request-id")
+        .expect("response must carry a generated x-request-id when none was sent")
+        .to_str()
+        .unwrap();
+
+    // UUIDv4 canonical form: 8-4-4-4-12 hex chars with dashes = 36 chars.
+    assert_eq!(id.len(), 36, "expected UUIDv4-shaped id, got {:?}", id);
+    assert_eq!(
+        id.chars().filter(|c| *c == '-').count(),
+        4,
+        "expected four dashes in UUIDv4, got {:?}",
+        id
+    );
+
+    // Two requests should produce distinct ids.
+    let resp2 = client
+        .get(format!("{}/ip", base_url))
+        .send()
+        .await
+        .unwrap();
+    let id2 = resp2.headers().get("x-request-id").unwrap().to_str().unwrap();
+    assert_ne!(id, id2, "each request should get a fresh id");
+}
+
+#[tokio::test]
 async fn test_e2e_unknown_path_returns_404() {
     let (base_url, _handle) = start_test_server().await;
     let client = reqwest::Client::new();
