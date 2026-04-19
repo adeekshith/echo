@@ -1,4 +1,5 @@
 use std::net::SocketAddr;
+use std::time::Duration;
 
 use metrics_exporter_prometheus::PrometheusBuilder;
 use tokio::net::TcpListener;
@@ -13,6 +14,11 @@ mod ratelimit;
 mod routes;
 mod state;
 mod sync;
+
+/// How often the rate limiter sweeps idle IPs out of its DashMap. 60s is a
+/// balance between memory pressure (many short-lived clients) and doing
+/// unnecessary work under steady traffic.
+const RATE_LIMIT_EVICTION_INTERVAL: Duration = Duration::from_secs(60);
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -37,7 +43,23 @@ async fn main() -> anyhow::Result<()> {
         sync::scheduler::start_sync_loop(sync_state).await;
     });
 
-    let app = routes::create_router(state);
+    let rl_state = ratelimit::RateLimitState::new(
+        state.config.rate_limit_per_second,
+        state.config.rate_limit_burst,
+    );
+
+    let eviction_rl = rl_state.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(RATE_LIMIT_EVICTION_INTERVAL);
+        loop {
+            interval.tick().await;
+            eviction_rl.retain_recent();
+            metrics::gauge!("rate_limit_tracked_ips")
+                .set(eviction_rl.tracked_ip_count() as f64);
+        }
+    });
+
+    let app = routes::create_router_with_rate_limiter(state, rl_state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
     tracing::info!("listening on {}", addr);

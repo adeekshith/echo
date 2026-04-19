@@ -26,6 +26,20 @@ impl RateLimitState {
         let limiter = Arc::new(RateLimiter::keyed(quota));
         Self { limiter }
     }
+
+    /// Evict keys whose rate-limit state has fully replenished. Without this,
+    /// the DashMap grows by one entry per unique client IP and never shrinks,
+    /// so long-running instances slowly leak memory.
+    pub fn retain_recent(&self) {
+        self.limiter.retain_recent();
+        self.limiter.shrink_to_fit();
+    }
+
+    /// Current number of tracked IPs. Used for observability of the eviction
+    /// loop; governor may return an estimate depending on the store.
+    pub fn tracked_ip_count(&self) -> usize {
+        self.limiter.len()
+    }
 }
 
 pub async fn rate_limit_middleware(
