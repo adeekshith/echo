@@ -11,6 +11,7 @@ mod handlers;
 mod lookup;
 mod providers;
 mod ratelimit;
+mod request_id;
 mod routes;
 mod state;
 mod sync;

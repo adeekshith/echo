@@ -6,6 +6,7 @@ use tower_http::trace::TraceLayer;
 
 use crate::handlers::{echo, health, metrics};
 use crate::ratelimit::{RateLimitState, rate_limit_middleware};
+use crate::request_id::request_id_middleware;
 use crate::state::AppState;
 
 pub fn create_router(state: AppState) -> Router {
@@ -44,5 +45,6 @@ pub fn create_router_with_rate_limiter(state: AppState, rl_state: RateLimitState
 
     rate_limited
         .merge(internal)
+        .layer(axum::middleware::from_fn(request_id_middleware))
         .layer(TraceLayer::new_for_http())
 }
