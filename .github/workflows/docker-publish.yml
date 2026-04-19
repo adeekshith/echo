@@ -10,7 +10,7 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  test:
+  cargo-tests:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -19,12 +19,24 @@ jobs:
       - name: Build test image
         run: docker build -f Dockerfile.test -t ipecho-test .
 
-      - name: Run tests
+      - name: Run test suite
         run: docker run --rm ipecho-test
+
+  smoke-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build production image
+        run: docker build -t ipecho-run .
+
+      - name: Run smoke script
+        run: ./scripts/smoke.sh ipecho-run
 
   build-and-push:
     runs-on: ubuntu-latest
-    needs: test
+    needs: [cargo-tests, smoke-tests]
     permissions:
       contents: read
       packages: write

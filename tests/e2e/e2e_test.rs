@@ -7,6 +7,7 @@ use tokio::sync::RwLock;
 use ipecho::config::Config;
 use ipecho::lookup::IpLookupTable;
 use ipecho::providers::ProviderRecord;
+use ipecho::ratelimit::RateLimitState;
 use ipecho::routes::create_router;
 use ipecho::state::{AppState, SyncStatus};
 
@@ -42,11 +43,16 @@ async fn start_test_server() -> (String, tokio::task::JoinHandle<()>) {
             cidr_count: 1,
             last_error: None,
         }])),
+        provider_records: Arc::new(RwLock::new(std::collections::HashMap::new())),
         config: Arc::new(test_config()),
         metrics_handle: handle,
     };
 
-    let app = create_router(state);
+    let rl_state = RateLimitState::new(
+        state.config.rate_limit_per_second,
+        state.config.rate_limit_burst,
+    );
+    let app = create_router(state, rl_state);
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let base_url = format!("http://{}", addr);
@@ -228,6 +234,64 @@ async fn test_e2e_header_by_name_missing_returns_404() {
         .unwrap();
 
     assert_eq!(resp.status(), 404);
+}
+
+#[tokio::test]
+async fn test_e2e_request_id_echoed_when_inbound_header_present() {
+    let (base_url, _handle) = start_test_server().await;
+    let client = reqwest::Client::new();
+
+    let resp = client
+        .get(format!("{}/ip", base_url))
+        .header("x-request-id", "e2e-correlation-abc-123")
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 200);
+    assert_eq!(
+        resp.headers().get("x-request-id").unwrap(),
+        "e2e-correlation-abc-123",
+        "middleware should echo the inbound id so upstream callers can correlate"
+    );
+}
+
+#[tokio::test]
+async fn test_e2e_request_id_generated_when_absent() {
+    let (base_url, _handle) = start_test_server().await;
+    let client = reqwest::Client::new();
+
+    let resp = client
+        .get(format!("{}/ip", base_url))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 200);
+    let id = resp
+        .headers()
+        .get("x-request-id")
+        .expect("response must carry a generated x-request-id when none was sent")
+        .to_str()
+        .unwrap();
+
+    // UUIDv4 canonical form: 8-4-4-4-12 hex chars with dashes = 36 chars.
+    assert_eq!(id.len(), 36, "expected UUIDv4-shaped id, got {:?}", id);
+    assert_eq!(
+        id.chars().filter(|c| *c == '-').count(),
+        4,
+        "expected four dashes in UUIDv4, got {:?}",
+        id
+    );
+
+    // Two requests should produce distinct ids.
+    let resp2 = client
+        .get(format!("{}/ip", base_url))
+        .send()
+        .await
+        .unwrap();
+    let id2 = resp2.headers().get("x-request-id").unwrap().to_str().unwrap();
+    assert_ne!(id, id2, "each request should get a fresh id");
 }
 
 #[tokio::test]

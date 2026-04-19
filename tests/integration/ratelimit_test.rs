@@ -1,49 +1,30 @@
 use std::net::SocketAddr;
-use std::sync::Arc;
 
 use axum::body::Body;
 use axum::extract::ConnectInfo;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
-use metrics_exporter_prometheus::PrometheusBuilder;
-use tokio::sync::RwLock;
 use tower::ServiceExt;
 
-use ipecho::config::Config;
 use ipecho::lookup::IpLookupTable;
-use ipecho::routes::create_router;
-use ipecho::state::{AppState, SyncStatus};
+use ipecho::state::AppState;
 
-fn test_config() -> Config {
-    Config {
-        port: 8083,
-        sync_interval_secs: 43200,
-        log_level: "info".to_string(),
-        trusted_proxies: vec!["10.0.0.0/8".parse().unwrap()],
-        rate_limit_per_second: 1,
-        rate_limit_burst: 1,
-        excluded_headers: vec![],
-    }
-}
+use super::common::{build_router, test_config, test_state, throwaway_metrics_handle};
 
-fn test_metrics_handle() -> metrics_exporter_prometheus::PrometheusHandle {
-    let recorder = PrometheusBuilder::new().build_recorder();
-    recorder.handle()
-}
-
-fn test_state_with_table(table: IpLookupTable) -> AppState {
-    AppState {
-        lookup_table: Arc::new(RwLock::new(table)),
-        sync_status: Arc::new(RwLock::new(vec![])),
-        config: Arc::new(test_config()),
-        metrics_handle: test_metrics_handle(),
-    }
+/// Rate-limit-specific state: same as [`common::test_state_with_table`] but
+/// with a 1-rps/1-burst limiter so tests can observe rejections after a
+/// single request.
+fn strict_rate_limit_state(table: IpLookupTable) -> AppState {
+    let mut config = test_config();
+    config.rate_limit_per_second = 1;
+    config.rate_limit_burst = 1;
+    test_state(config, throwaway_metrics_handle(), table)
 }
 
 #[tokio::test]
 async fn test_rate_limit_rejects_over_limit() {
-    let state = test_state_with_table(IpLookupTable::empty());
-    let app = create_router(state);
+    let state = strict_rate_limit_state(IpLookupTable::empty());
+    let app = build_router(state);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 12345));
 
@@ -68,8 +49,8 @@ async fn test_rate_limit_rejects_over_limit() {
 
 #[tokio::test]
 async fn test_rate_limit_is_per_ip() {
-    let state = test_state_with_table(IpLookupTable::empty());
-    let app = create_router(state);
+    let state = strict_rate_limit_state(IpLookupTable::empty());
+    let app = build_router(state);
 
     let addr1 = SocketAddr::from(([127, 0, 0, 1], 12345));
     let addr2 = SocketAddr::from(([127, 0, 0, 2], 12345));
@@ -95,8 +76,8 @@ async fn test_rate_limit_is_per_ip() {
 
 #[tokio::test]
 async fn test_rate_limit_returns_json_error() {
-    let state = test_state_with_table(IpLookupTable::empty());
-    let app = create_router(state);
+    let state = strict_rate_limit_state(IpLookupTable::empty());
+    let app = build_router(state);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 12345));
 

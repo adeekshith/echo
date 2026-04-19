@@ -26,6 +26,60 @@ impl RateLimitState {
         let limiter = Arc::new(RateLimiter::keyed(quota));
         Self { limiter }
     }
+
+    /// Evict keys whose rate-limit state has fully replenished. Without this,
+    /// the DashMap grows by one entry per unique client IP and never shrinks,
+    /// so long-running instances slowly leak memory.
+    pub fn retain_recent(&self) {
+        self.limiter.retain_recent();
+        self.limiter.shrink_to_fit();
+    }
+
+    /// Current number of tracked IPs. Used for observability of the eviction
+    /// loop; governor may return an estimate depending on the store.
+    pub fn tracked_ip_count(&self) -> usize {
+        self.limiter.len()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn tracked_ip_count_reflects_checked_keys() {
+        let rl = RateLimitState::new(100, 100);
+        assert_eq!(rl.tracked_ip_count(), 0);
+
+        let a: IpAddr = "10.0.0.1".parse().unwrap();
+        let b: IpAddr = "10.0.0.2".parse().unwrap();
+        let _ = rl.limiter.check_key(&a);
+        let _ = rl.limiter.check_key(&b);
+        let _ = rl.limiter.check_key(&a); // same key again — still one tracked entry
+
+        assert_eq!(rl.tracked_ip_count(), 2);
+    }
+
+    #[test]
+    fn retain_recent_drops_replenished_keys() {
+        // At 1000 rps the GCRA interval is 1ms, so after sleeping 100ms a
+        // just-checked key's theoretical arrival time is firmly in the past
+        // and retain_recent() considers it indistinguishable from fresh.
+        let rl = RateLimitState::new(1000, 1);
+        let ip: IpAddr = "203.0.113.7".parse().unwrap();
+        let _ = rl.limiter.check_key(&ip);
+        assert_eq!(rl.tracked_ip_count(), 1);
+
+        std::thread::sleep(Duration::from_millis(100));
+        rl.retain_recent();
+
+        assert_eq!(
+            rl.tracked_ip_count(),
+            0,
+            "key with fully-replenished quota should be evicted"
+        );
+    }
 }
 
 pub async fn rate_limit_middleware(

@@ -1,7 +1,15 @@
 use std::env;
 use std::net::IpAddr;
+use std::str::FromStr;
 
 use ipnet::IpNet;
+
+const DEFAULT_PORT: u16 = 8083;
+const DEFAULT_SYNC_INTERVAL_SECS: u64 = 43200;
+const DEFAULT_LOG_LEVEL: &str = "info";
+const DEFAULT_TRUSTED_PROXIES: &str = "127.0.0.1/32,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16";
+const DEFAULT_RATE_LIMIT_PER_SECOND: u64 = 10;
+const DEFAULT_RATE_LIMIT_BURST: u32 = 20;
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -14,46 +22,118 @@ pub struct Config {
     pub excluded_headers: Vec<String>,
 }
 
+/// Read an env var. Returns `Ok(None)` if unset, `Ok(Some(raw))` if set
+/// (even to an empty string), and `Err(...)` if set to invalid Unicode.
+fn read_env(key: &str) -> Result<Option<String>, String> {
+    match env::var(key) {
+        Ok(v) => Ok(Some(v)),
+        Err(env::VarError::NotPresent) => Ok(None),
+        Err(env::VarError::NotUnicode(_)) => Err(format!("{key} is set to invalid Unicode")),
+    }
+}
+
+/// Parse an env var that falls back to `default` only when unset. If the
+/// env var is explicitly set, it must parse successfully and pass
+/// `validate`, otherwise startup fails.
+fn parse_env<T, F>(key: &str, default: T, validate: F) -> Result<T, String>
+where
+    T: FromStr,
+    T::Err: std::fmt::Display,
+    F: Fn(&T) -> Result<(), String>,
+{
+    match read_env(key)? {
+        None => Ok(default),
+        Some(raw) => {
+            let parsed: T = raw
+                .parse()
+                .map_err(|e| format!("{key}=\"{raw}\" is not a valid value: {e}"))?;
+            validate(&parsed).map_err(|e| format!("{key}=\"{raw}\" is invalid: {e}"))?;
+            Ok(parsed)
+        }
+    }
+}
+
+fn parse_trusted_proxies(raw: &str) -> Result<Vec<IpNet>, String> {
+    raw.split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| {
+            s.parse::<IpNet>()
+                .map_err(|e| format!("\"{s}\" is not a valid CIDR: {e}"))
+        })
+        .collect()
+}
+
 impl Config {
-    pub fn from_env() -> Self {
-        let port = env::var("PORT")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(8083);
+    pub fn from_env() -> Result<Self, String> {
+        let port = parse_env::<u16, _>("PORT", DEFAULT_PORT, |v| {
+            if *v == 0 {
+                Err("must be between 1 and 65535".into())
+            } else {
+                Ok(())
+            }
+        })?;
 
-        let sync_interval_secs = env::var("SYNC_INTERVAL_SECS")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(43200);
+        let sync_interval_secs =
+            parse_env::<u64, _>("SYNC_INTERVAL_SECS", DEFAULT_SYNC_INTERVAL_SECS, |v| {
+                if *v == 0 {
+                    Err("must be greater than 0".into())
+                } else {
+                    Ok(())
+                }
+            })?;
 
-        let log_level = env::var("LOG_LEVEL").unwrap_or_else(|_| "info".to_string());
+        let log_level = match read_env("LOG_LEVEL")? {
+            Some(s) if !s.trim().is_empty() => s,
+            _ => DEFAULT_LOG_LEVEL.to_string(),
+        };
 
-        let trusted_proxies = env::var("TRUSTED_PROXIES")
-            .unwrap_or_else(|_| {
-                "127.0.0.1/32,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16".to_string()
-            })
-            .split(',')
-            .filter_map(|s| s.trim().parse::<IpNet>().ok())
-            .collect();
+        let trusted_proxies = match read_env("TRUSTED_PROXIES")? {
+            None => parse_trusted_proxies(DEFAULT_TRUSTED_PROXIES)
+                .expect("built-in default TRUSTED_PROXIES should always parse"),
+            Some(raw) => {
+                let parsed = parse_trusted_proxies(&raw)
+                    .map_err(|e| format!("TRUSTED_PROXIES is invalid: {e}"))?;
+                if parsed.is_empty() {
+                    return Err(format!(
+                        "TRUSTED_PROXIES is set but contains no entries: \"{raw}\""
+                    ));
+                }
+                parsed
+            }
+        };
 
-        let rate_limit_per_second = env::var("RATE_LIMIT_PER_SECOND")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(10);
+        let rate_limit_per_second = parse_env::<u64, _>(
+            "RATE_LIMIT_PER_SECOND",
+            DEFAULT_RATE_LIMIT_PER_SECOND,
+            |v| {
+                if *v == 0 {
+                    Err("must be greater than 0".into())
+                } else {
+                    Ok(())
+                }
+            },
+        )?;
 
-        let rate_limit_burst = env::var("RATE_LIMIT_BURST")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(20);
+        let rate_limit_burst =
+            parse_env::<u32, _>("RATE_LIMIT_BURST", DEFAULT_RATE_LIMIT_BURST, |v| {
+                if *v == 0 {
+                    Err("must be greater than 0".into())
+                } else {
+                    Ok(())
+                }
+            })?;
 
-        let excluded_headers = env::var("EXCLUDED_HEADERS")
-            .unwrap_or_default()
-            .split(',')
-            .map(|s| s.trim().to_lowercase())
-            .filter(|s| !s.is_empty())
-            .collect();
+        let excluded_headers = match read_env("EXCLUDED_HEADERS")? {
+            None => Vec::new(),
+            Some(raw) => raw
+                .split(',')
+                .map(|s| s.trim().to_lowercase())
+                .filter(|s| !s.is_empty())
+                .collect(),
+        };
 
-        Self {
+        Ok(Self {
             port,
             sync_interval_secs,
             log_level,
@@ -61,7 +141,7 @@ impl Config {
             rate_limit_per_second,
             rate_limit_burst,
             excluded_headers,
-        }
+        })
     }
 
     pub fn is_trusted_proxy(&self, ip: &IpAddr) -> bool {
@@ -77,26 +157,86 @@ impl Config {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_default_config() {
-        // Clear env vars to test defaults
+    // These tests mutate process-wide env vars, so they can't run in parallel
+    // with each other. We serialize by defining a single #[test] that runs
+    // each scenario sequentially; this keeps behavior simple without adding
+    // a `serial_test` dep.
+    fn clear_all() {
         unsafe {
-            env::remove_var("PORT");
-            env::remove_var("SYNC_INTERVAL_SECS");
-            env::remove_var("LOG_LEVEL");
-            env::remove_var("TRUSTED_PROXIES");
-            env::remove_var("RATE_LIMIT_PER_SECOND");
-            env::remove_var("RATE_LIMIT_BURST");
+            for k in [
+                "PORT",
+                "SYNC_INTERVAL_SECS",
+                "LOG_LEVEL",
+                "TRUSTED_PROXIES",
+                "RATE_LIMIT_PER_SECOND",
+                "RATE_LIMIT_BURST",
+                "EXCLUDED_HEADERS",
+            ] {
+                env::remove_var(k);
+            }
         }
+    }
 
-        let config = Config::from_env();
-        assert_eq!(config.port, 8083);
-        assert_eq!(config.sync_interval_secs, 43200);
-        assert_eq!(config.log_level, "info");
-        assert_eq!(config.trusted_proxies.len(), 4);
-        assert_eq!(config.rate_limit_per_second, 10);
-        assert_eq!(config.rate_limit_burst, 20);
-        assert!(config.excluded_headers.is_empty());
+    #[test]
+    fn env_driven_config_scenarios() {
+        // Unset vars -> defaults.
+        clear_all();
+        let c = Config::from_env().expect("defaults should be valid");
+        assert_eq!(c.port, DEFAULT_PORT);
+        assert_eq!(c.sync_interval_secs, DEFAULT_SYNC_INTERVAL_SECS);
+        assert_eq!(c.log_level, DEFAULT_LOG_LEVEL);
+        assert_eq!(c.trusted_proxies.len(), 4);
+        assert_eq!(c.rate_limit_per_second, DEFAULT_RATE_LIMIT_PER_SECOND);
+        assert_eq!(c.rate_limit_burst, DEFAULT_RATE_LIMIT_BURST);
+        assert!(c.excluded_headers.is_empty());
+
+        // Explicit PORT=0 -> error.
+        clear_all();
+        unsafe { env::set_var("PORT", "0") };
+        assert!(Config::from_env().is_err());
+
+        // Explicit PORT=abc -> error (parse failure).
+        clear_all();
+        unsafe { env::set_var("PORT", "abc") };
+        assert!(Config::from_env().is_err());
+
+        // Explicit valid PORT.
+        clear_all();
+        unsafe { env::set_var("PORT", "9000") };
+        assert_eq!(Config::from_env().unwrap().port, 9000);
+
+        // SYNC_INTERVAL_SECS=0 -> error.
+        clear_all();
+        unsafe { env::set_var("SYNC_INTERVAL_SECS", "0") };
+        assert!(Config::from_env().is_err());
+
+        // RATE_LIMIT_PER_SECOND=0 -> error.
+        clear_all();
+        unsafe { env::set_var("RATE_LIMIT_PER_SECOND", "0") };
+        assert!(Config::from_env().is_err());
+
+        // RATE_LIMIT_BURST=0 -> error.
+        clear_all();
+        unsafe { env::set_var("RATE_LIMIT_BURST", "0") };
+        assert!(Config::from_env().is_err());
+
+        // TRUSTED_PROXIES set but empty -> error.
+        clear_all();
+        unsafe { env::set_var("TRUSTED_PROXIES", "   ") };
+        assert!(Config::from_env().is_err());
+
+        // TRUSTED_PROXIES with garbage entry -> error.
+        clear_all();
+        unsafe { env::set_var("TRUSTED_PROXIES", "not-a-cidr") };
+        assert!(Config::from_env().is_err());
+
+        // TRUSTED_PROXIES with one valid entry -> ok.
+        clear_all();
+        unsafe { env::set_var("TRUSTED_PROXIES", "10.0.0.0/8") };
+        let c = Config::from_env().unwrap();
+        assert_eq!(c.trusted_proxies.len(), 1);
+
+        clear_all();
     }
 
     #[test]

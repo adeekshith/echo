@@ -6,14 +6,13 @@ use tower_http::trace::TraceLayer;
 
 use crate::handlers::{echo, health, metrics};
 use crate::ratelimit::{RateLimitState, rate_limit_middleware};
+use crate::request_id::request_id_middleware;
 use crate::state::AppState;
 
-pub fn create_router(state: AppState) -> Router {
+/// Wire up all routes and middleware. `rl_state` is owned by the caller so
+/// a background task can periodically evict idle entries (see `main.rs`).
+pub fn create_router(state: AppState, rl_state: RateLimitState) -> Router {
     let shared_state = Arc::new(state.clone());
-    let rl_state = RateLimitState::new(
-        state.config.rate_limit_per_second,
-        state.config.rate_limit_burst,
-    );
 
     // Rate-limited routes (public echo endpoints)
     let rate_limited = Router::new()
@@ -38,5 +37,6 @@ pub fn create_router(state: AppState) -> Router {
 
     rate_limited
         .merge(internal)
+        .layer(axum::middleware::from_fn(request_id_middleware))
         .layer(TraceLayer::new_for_http())
 }

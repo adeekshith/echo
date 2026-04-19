@@ -4,6 +4,7 @@ pub mod handlers;
 pub mod lookup;
 pub mod providers;
 pub mod ratelimit;
+pub mod request_id;
 pub mod routes;
 pub mod state;
 pub mod sync;

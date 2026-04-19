@@ -1,3 +1,5 @@
+mod common;
+
 mod app_error_test;
 mod echo_test;
 mod metrics_test;

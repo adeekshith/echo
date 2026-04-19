@@ -39,16 +39,25 @@ pub async fn health_handler(
         })
         .collect();
 
+    let degraded = table.is_empty();
     let response = HealthResponse {
-        status: if table.is_empty() { "degraded" } else { "ok" },
+        status: if degraded { "degraded" } else { "ok" },
         total_cidrs: table.len(),
         providers,
     };
 
     let body = serde_json::to_string_pretty(&response)?;
 
+    // Return 503 when degraded so Kubernetes readiness probes (and any
+    // LB health checks) stop routing traffic to an empty-table instance.
+    let status = if degraded {
+        StatusCode::SERVICE_UNAVAILABLE
+    } else {
+        StatusCode::OK
+    };
+
     Response::builder()
-        .status(StatusCode::OK)
+        .status(status)
         .header(header::CONTENT_TYPE, "application/json")
         .body(Body::from(body))
         .map_err(|_| AppError::HttpBuilderError)

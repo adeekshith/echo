@@ -1,46 +1,20 @@
 use std::net::SocketAddr;
-use std::sync::{Arc, OnceLock};
 
 use axum::body::Body;
 use axum::extract::ConnectInfo;
 use axum::http::{Request, StatusCode};
-use metrics_exporter_prometheus::PrometheusBuilder;
-use tokio::sync::RwLock;
 use tower::ServiceExt;
 
-use ipecho::config::Config;
 use ipecho::lookup::IpLookupTable;
 use ipecho::providers::ProviderRecord;
-use ipecho::routes::create_router;
 use ipecho::state::AppState;
 
-static METRICS_HANDLE: OnceLock<metrics_exporter_prometheus::PrometheusHandle> = OnceLock::new();
-
-fn test_config() -> Config {
-    Config {
-        port: 8083,
-        sync_interval_secs: 43200,
-        log_level: "info".to_string(),
-        trusted_proxies: vec!["10.0.0.0/8".parse().unwrap()],
-        rate_limit_per_second: 100,
-        rate_limit_burst: 100,
-        excluded_headers: vec![],
-    }
-}
-
-fn test_metrics_handle() -> metrics_exporter_prometheus::PrometheusHandle {
-    METRICS_HANDLE
-        .get_or_init(|| PrometheusBuilder::new().install_recorder().unwrap())
-        .clone()
-}
+use super::common::{build_router, global_metrics_handle, test_config, test_state};
 
 fn test_state_with_table(table: IpLookupTable) -> AppState {
-    AppState {
-        lookup_table: Arc::new(RwLock::new(table)),
-        sync_status: Arc::new(RwLock::new(vec![])),
-        config: Arc::new(test_config()),
-        metrics_handle: test_metrics_handle(),
-    }
+    // Use the globally installed recorder so metrics::counter! calls made by
+    // request handlers actually get captured and show up in /metrics.
+    test_state(test_config(), global_metrics_handle(), table)
 }
 
 fn seeded_lookup_table() -> IpLookupTable {
@@ -57,7 +31,7 @@ fn seeded_lookup_table() -> IpLookupTable {
 #[tokio::test]
 async fn test_http_requests_counter_incremented() {
     let state = test_state_with_table(IpLookupTable::empty());
-    let app = create_router(state.clone());
+    let app = build_router(state.clone());
 
     let req = Request::builder()
         .uri("/")
@@ -75,7 +49,7 @@ async fn test_http_requests_counter_incremented() {
 #[tokio::test]
 async fn test_ip_lookup_counter_hit() {
     let state = test_state_with_table(seeded_lookup_table());
-    let app = create_router(state.clone());
+    let app = build_router(state.clone());
 
     let req = Request::builder()
         .uri("/")
@@ -93,7 +67,7 @@ async fn test_ip_lookup_counter_hit() {
 #[tokio::test]
 async fn test_ip_lookup_counter_miss() {
     let state = test_state_with_table(seeded_lookup_table());
-    let app = create_router(state.clone());
+    let app = build_router(state.clone());
 
     let req = Request::builder()
         .uri("/")
@@ -110,18 +84,11 @@ async fn test_ip_lookup_counter_miss() {
 
 #[tokio::test]
 async fn test_rate_limit_rejected_counter_incremented() {
-    let config = Config {
-        rate_limit_per_second: 1,
-        rate_limit_burst: 1,
-        ..test_config()
-    };
-    let state = AppState {
-        lookup_table: Arc::new(RwLock::new(IpLookupTable::empty())),
-        sync_status: Arc::new(RwLock::new(vec![])),
-        config: Arc::new(config),
-        metrics_handle: test_metrics_handle(),
-    };
-    let app = create_router(state.clone());
+    let mut config = test_config();
+    config.rate_limit_per_second = 1;
+    config.rate_limit_burst = 1;
+    let state = test_state(config, global_metrics_handle(), IpLookupTable::empty());
+    let app = build_router(state.clone());
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 12345));
 
