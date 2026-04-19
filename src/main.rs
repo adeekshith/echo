@@ -42,7 +42,37 @@ async fn main() -> anyhow::Result<()> {
     let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
     tracing::info!("listening on {}", addr);
     let listener = TcpListener::bind(addr).await?;
-    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await?;
+    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
 
+    tracing::info!("shutdown complete");
     Ok(())
+}
+
+/// Wait for SIGINT or SIGTERM, then return so axum's graceful shutdown
+/// drains in-flight requests. On non-Unix platforms, only Ctrl-C is
+/// honored (tokio does not expose SIGTERM elsewhere).
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl-C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => tracing::info!("shutdown: SIGINT received"),
+        _ = terminate => tracing::info!("shutdown: SIGTERM received"),
+    }
 }
