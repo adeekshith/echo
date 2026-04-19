@@ -7,6 +7,7 @@ use tokio::sync::RwLock;
 use ipecho::config::Config;
 use ipecho::lookup::IpLookupTable;
 use ipecho::providers::ProviderRecord;
+use ipecho::ratelimit::RateLimitState;
 use ipecho::routes::create_router;
 use ipecho::state::{AppState, SyncStatus};
 
@@ -47,7 +48,11 @@ async fn start_test_server() -> (String, tokio::task::JoinHandle<()>) {
         metrics_handle: handle,
     };
 
-    let app = create_router(state);
+    let rl_state = RateLimitState::new(
+        state.config.rate_limit_per_second,
+        state.config.rate_limit_burst,
+    );
+    let app = create_router(state, rl_state);
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let base_url = format!("http://{}", addr);

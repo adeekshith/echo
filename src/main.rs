@@ -60,7 +60,7 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    let app = routes::create_router_with_rate_limiter(state, rl_state);
+    let app = routes::create_router(state, rl_state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
     tracing::info!("listening on {}", addr);

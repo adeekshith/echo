@@ -5,27 +5,15 @@ use axum::body::Body;
 use axum::extract::ConnectInfo;
 use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
-use metrics_exporter_prometheus::PrometheusBuilder;
 use tokio::sync::RwLock;
 use tower::ServiceExt;
 
 use ipecho::config::Config;
 use ipecho::lookup::IpLookupTable;
 use ipecho::providers::ProviderRecord;
-use ipecho::routes::create_router;
 use ipecho::state::{AppState, SyncStatus};
 
-fn test_config() -> Config {
-    Config {
-        port: 8083,
-        sync_interval_secs: 43200,
-        log_level: "info".to_string(),
-        trusted_proxies: vec!["10.0.0.0/8".parse().unwrap()],
-        rate_limit_per_second: 100,
-        rate_limit_burst: 100,
-        excluded_headers: vec![],
-    }
-}
+use super::common::{build_router, test_config, test_state, throwaway_metrics_handle};
 
 fn seeded_lookup_table() -> IpLookupTable {
     IpLookupTable::from_records(vec![
@@ -44,30 +32,23 @@ fn seeded_lookup_table() -> IpLookupTable {
     ])
 }
 
-fn test_metrics_handle() -> metrics_exporter_prometheus::PrometheusHandle {
-    let recorder = PrometheusBuilder::new().build_recorder();
-    recorder.handle()
-}
-
+/// Echo-test-specific state: permissive config + a seeded SyncStatus so
+/// /health reports "ok" with provider info, since some tests assert on it.
 fn test_state_with_table(table: IpLookupTable) -> AppState {
-    AppState {
-        lookup_table: Arc::new(RwLock::new(table)),
-        sync_status: Arc::new(RwLock::new(vec![SyncStatus {
-            provider: "aws".to_string(),
-            last_synced_at: Some(1700000000),
-            cidr_count: 1,
-            last_error: None,
-        }])),
-        provider_records: Arc::new(RwLock::new(std::collections::HashMap::new())),
-        config: Arc::new(test_config()),
-        metrics_handle: test_metrics_handle(),
-    }
+    let mut state = test_state(test_config(), throwaway_metrics_handle(), table);
+    state.sync_status = Arc::new(RwLock::new(vec![SyncStatus {
+        provider: "aws".to_string(),
+        last_synced_at: Some(1700000000),
+        cidr_count: 1,
+        last_error: None,
+    }]));
+    state
 }
 
 #[tokio::test]
 async fn test_echo_returns_json_with_headers() {
     let state = test_state_with_table(IpLookupTable::empty());
-    let app = create_router(state);
+    let app = build_router(state);
 
     let req = Request::builder()
         .uri("/")
@@ -103,7 +84,7 @@ async fn test_echo_returns_json_with_headers() {
 #[tokio::test]
 async fn test_echo_with_provider_match() {
     let state = test_state_with_table(seeded_lookup_table());
-    let app = create_router(state);
+    let app = build_router(state);
 
     let req = Request::builder()
         .uri("/")
@@ -124,7 +105,7 @@ async fn test_echo_with_provider_match() {
 #[tokio::test]
 async fn test_echo_pretty_prints_json() {
     let state = test_state_with_table(IpLookupTable::empty());
-    let app = create_router(state);
+    let app = build_router(state);
 
     let req = Request::builder()
         .uri("/")
@@ -143,7 +124,7 @@ async fn test_echo_pretty_prints_json() {
 #[tokio::test]
 async fn test_health_endpoint() {
     let state = test_state_with_table(seeded_lookup_table());
-    let app = create_router(state);
+    let app = build_router(state);
 
     let req = Request::builder()
         .uri("/health")
@@ -164,7 +145,7 @@ async fn test_health_endpoint() {
 #[tokio::test]
 async fn test_health_degraded_when_empty() {
     let state = test_state_with_table(IpLookupTable::empty());
-    let app = create_router(state);
+    let app = build_router(state);
 
     let req = Request::builder()
         .uri("/health")
@@ -188,7 +169,7 @@ async fn test_health_degraded_when_empty() {
 #[tokio::test]
 async fn test_ip_endpoint_returns_plain_text() {
     let state = test_state_with_table(IpLookupTable::empty());
-    let app = create_router(state);
+    let app = build_router(state);
 
     let req = Request::builder()
         .uri("/ip")
@@ -207,7 +188,7 @@ async fn test_ip_endpoint_returns_plain_text() {
 #[tokio::test]
 async fn test_provider_endpoint_with_match() {
     let state = test_state_with_table(seeded_lookup_table());
-    let app = create_router(state);
+    let app = build_router(state);
 
     let req = Request::builder()
         .uri("/provider")
@@ -226,7 +207,7 @@ async fn test_provider_endpoint_with_match() {
 #[tokio::test]
 async fn test_provider_endpoint_returns_204_when_unknown() {
     let state = test_state_with_table(IpLookupTable::empty());
-    let app = create_router(state);
+    let app = build_router(state);
 
     let req = Request::builder()
         .uri("/provider")
@@ -241,7 +222,7 @@ async fn test_provider_endpoint_returns_204_when_unknown() {
 #[tokio::test]
 async fn test_region_endpoint_with_match() {
     let state = test_state_with_table(seeded_lookup_table());
-    let app = create_router(state);
+    let app = build_router(state);
 
     let req = Request::builder()
         .uri("/region")
@@ -259,7 +240,7 @@ async fn test_region_endpoint_with_match() {
 #[tokio::test]
 async fn test_service_endpoint_returns_204_when_unknown() {
     let state = test_state_with_table(IpLookupTable::empty());
-    let app = create_router(state);
+    let app = build_router(state);
 
     let req = Request::builder()
         .uri("/service")
@@ -274,7 +255,7 @@ async fn test_service_endpoint_returns_204_when_unknown() {
 #[tokio::test]
 async fn test_headers_endpoint_returns_json() {
     let state = test_state_with_table(IpLookupTable::empty());
-    let app = create_router(state);
+    let app = build_router(state);
 
     let req = Request::builder()
         .uri("/headers")
@@ -298,7 +279,7 @@ async fn test_headers_endpoint_returns_json() {
 #[tokio::test]
 async fn test_header_by_name_returns_value() {
     let state = test_state_with_table(IpLookupTable::empty());
-    let app = create_router(state);
+    let app = build_router(state);
 
     let req = Request::builder()
         .uri("/headers/user-agent")
@@ -318,7 +299,7 @@ async fn test_header_by_name_returns_value() {
 #[tokio::test]
 async fn test_header_by_name_returns_404_for_missing() {
     let state = test_state_with_table(IpLookupTable::empty());
-    let app = create_router(state);
+    let app = build_router(state);
 
     let req = Request::builder()
         .uri("/headers/x-nonexistent")
@@ -333,35 +314,27 @@ async fn test_header_by_name_returns_404_for_missing() {
 // --- Header exclusion tests ---
 
 fn test_config_with_excluded_headers() -> Config {
-    Config {
-        port: 8083,
-        sync_interval_secs: 43200,
-        log_level: "info".to_string(),
-        trusted_proxies: vec!["10.0.0.0/8".parse().unwrap()],
-        rate_limit_per_second: 100,
-        rate_limit_burst: 100,
-        excluded_headers: vec![
-            "x-forwarded-for".to_string(),
-            "x-forwarded-host".to_string(),
-            "via".to_string(),
-        ],
-    }
+    let mut config = test_config();
+    config.excluded_headers = vec![
+        "x-forwarded-for".to_string(),
+        "x-forwarded-host".to_string(),
+        "via".to_string(),
+    ];
+    config
 }
 
 fn test_state_with_exclusions(table: IpLookupTable) -> AppState {
-    AppState {
-        lookup_table: Arc::new(RwLock::new(table)),
-        sync_status: Arc::new(RwLock::new(vec![])),
-        provider_records: Arc::new(RwLock::new(std::collections::HashMap::new())),
-        config: Arc::new(test_config_with_excluded_headers()),
-        metrics_handle: test_metrics_handle(),
-    }
+    test_state(
+        test_config_with_excluded_headers(),
+        throwaway_metrics_handle(),
+        table,
+    )
 }
 
 #[tokio::test]
 async fn test_excluded_headers_omitted_from_echo() {
     let state = test_state_with_exclusions(IpLookupTable::empty());
-    let app = create_router(state);
+    let app = build_router(state);
 
     let req = Request::builder()
         .uri("/")
@@ -384,7 +357,7 @@ async fn test_excluded_headers_omitted_from_echo() {
 #[tokio::test]
 async fn test_excluded_headers_omitted_from_headers_endpoint() {
     let state = test_state_with_exclusions(IpLookupTable::empty());
-    let app = create_router(state);
+    let app = build_router(state);
 
     let req = Request::builder()
         .uri("/headers")
@@ -405,7 +378,7 @@ async fn test_excluded_headers_omitted_from_headers_endpoint() {
 #[tokio::test]
 async fn test_excluded_header_returns_404_by_name() {
     let state = test_state_with_exclusions(IpLookupTable::empty());
-    let app = create_router(state);
+    let app = build_router(state);
 
     let req = Request::builder()
         .uri("/headers/x-forwarded-for")
@@ -421,7 +394,7 @@ async fn test_excluded_header_returns_404_by_name() {
 #[tokio::test]
 async fn test_metrics_endpoint() {
     let state = test_state_with_table(IpLookupTable::empty());
-    let app = create_router(state);
+    let app = build_router(state);
 
     let req = Request::builder()
         .uri("/metrics")

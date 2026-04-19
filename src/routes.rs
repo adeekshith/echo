@@ -9,17 +9,9 @@ use crate::ratelimit::{RateLimitState, rate_limit_middleware};
 use crate::request_id::request_id_middleware;
 use crate::state::AppState;
 
-pub fn create_router(state: AppState) -> Router {
-    let rl_state = RateLimitState::new(
-        state.config.rate_limit_per_second,
-        state.config.rate_limit_burst,
-    );
-    create_router_with_rate_limiter(state, rl_state)
-}
-
-/// Same as [`create_router`] but accepts a prebuilt [`RateLimitState`] so the
-/// caller can drive periodic eviction of stale keys (see `main.rs`).
-pub fn create_router_with_rate_limiter(state: AppState, rl_state: RateLimitState) -> Router {
+/// Wire up all routes and middleware. `rl_state` is owned by the caller so
+/// a background task can periodically evict idle entries (see `main.rs`).
+pub fn create_router(state: AppState, rl_state: RateLimitState) -> Router {
     let shared_state = Arc::new(state.clone());
 
     // Rate-limited routes (public echo endpoints)
