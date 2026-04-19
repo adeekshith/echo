@@ -16,7 +16,8 @@ mod sync;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let config = config::Config::from_env();
+    let config = config::Config::from_env()
+        .map_err(|e| anyhow::anyhow!("invalid configuration: {e}"))?;
 
     tracing_subscriber::fmt()
         .with_env_filter(
